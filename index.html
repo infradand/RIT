@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#36424A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>RIT · Reunión de Inicio de Turno</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RIT">
+<style>
+:root{--dorado:#F4AA00;--naranjo:#E55302;--turquesa:#0098AA;--rojo:#C13832;--pizarra:#36424A;--pizarra2:#2A333A;--verde:#2E8B57;
+ --bg:#F2F3F4;--txt:#1E2428;--muted:#6B7580;--line:#DCE0E4;--r:14px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:16px}
+body{padding-bottom:96px}
+header{position:sticky;top:0;z-index:20;background:var(--pizarra);color:#fff}
+.brand{height:5px;background:linear-gradient(90deg,var(--dorado) 0 25%,var(--naranjo) 25% 50%,var(--turquesa) 50% 75%,var(--rojo) 75% 100%)}
+.hbar{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.hbar .logo{width:36px;height:36px;border-radius:9px;background:var(--dorado);display:grid;place-items:center;font-weight:800;color:var(--pizarra);font-size:13px;flex:none}
+.hbar h1{font-size:15px;margin:0;flex:1;line-height:1.2;min-width:0}.hbar h1 small{display:block;font-weight:400;font-size:11px;opacity:.75}
+.help{width:32px;height:32px;border-radius:50%;background:var(--dorado);color:var(--pizarra);font-weight:800;border:none;font-size:16px;flex:none}
+#timer{background:rgba(255,255,255,.14);border-radius:99px;padding:5px 10px;font-size:12px;font-weight:700;white-space:nowrap}#timer.over{background:var(--rojo)}
+.prog{background:var(--pizarra2);padding:8px 14px;display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.8)}
+.prog .bar{flex:1;height:6px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden}.prog .bar i{display:block;height:100%;background:var(--dorado)}
+main{padding:14px 14px 0;max-width:640px;margin:0 auto}
+.q{font-size:22px;font-weight:700;line-height:1.2;margin:4px 0 6px;color:var(--pizarra)}
+.guia{font-size:13px;color:#4a545c;line-height:1.45;margin:0 0 14px;padding:8px 12px;border-left:4px solid var(--dorado);background:#fff;border-radius:8px}
+.card{background:#fff;border-radius:var(--r);padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--pizarra)}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:#fff;color:var(--txt);font-family:inherit}
+textarea{min-height:70px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--turquesa);border-color:transparent}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:13px 18px;border-radius:12px;border:none;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn.p{background:var(--dorado);color:var(--pizarra)}.btn.s{background:#fff;border:1.5px solid var(--line);color:var(--pizarra)}.btn.t{background:var(--turquesa);color:#fff}.btn.r{background:var(--rojo);color:#fff}
+.btn.d{background:transparent;color:var(--rojo);padding:6px 8px;font-size:13px;font-weight:600}.btn.w{width:100%;margin-top:8px}.btn.sm{padding:9px 12px;font-size:14px}.btn.big{padding:18px;font-size:18px}
+.big.p{box-shadow:0 4px 14px rgba(244,170,0,.35)}
+.persona{display:flex;align-items:center;gap:10px;padding:10px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:8px;background:#fff}
+.persona.on{border-color:var(--verde);background:#F0F8F3}.persona.sel{border-color:var(--dorado);background:#FDF5DC}
+.persona .av{width:40px;height:40px;border-radius:50%;background:var(--pizarra);color:#fff;display:grid;place-items:center;font-weight:700;flex:none;font-size:14px}
+.persona.on .av{background:var(--verde)}.persona.sel .av{background:var(--dorado);color:var(--pizarra)}
+.persona .nm{flex:1;min-width:0;font-weight:600}.persona .nm small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+.yn{display:flex;gap:4px}.yn button{border:1.5px solid var(--line);background:#fff;border-radius:9px;padding:8px 12px;font-size:14px;font-weight:700;color:var(--muted);font-family:inherit}
+.yn button.si{border-color:var(--verde);background:var(--verde);color:#fff}.yn button.no{border-color:var(--rojo);background:var(--rojo);color:#fff}
+.tag{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;background:#EEF1F3;color:var(--pizarra)}
+.tag.rf{background:#FFF4EC;color:var(--naranjo)}.tag.ok{background:#E6F4EC;color:var(--verde)}.tag.no{background:#FBE9E8;color:var(--rojo)}.tag.tv{background:#E6F4EC;color:var(--verde);border:1px solid var(--verde)}.tag.ccp{background:#E5F6F8;color:var(--turquesa)}.tag.ccm{background:#FDF1D7;color:#8A5E00}
+.act{border:1.5px solid var(--line);border-radius:var(--r);padding:12px;margin-bottom:12px;background:#fff}.act.crit{border-color:var(--naranjo)}
+.act .top{display:flex;gap:8px;align-items:center}.act .num{width:30px;height:30px;border-radius:50%;background:var(--pizarra);color:#fff;display:grid;place-items:center;font-weight:800;flex:none}.act.crit .num{background:var(--naranjo)}
+.prep{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-top:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{border:1.5px solid var(--line);border-radius:99px;padding:7px 12px;font-size:13px;background:#fff;cursor:pointer}.chip.on{border-color:var(--naranjo);background:#FFF4EC;color:var(--naranjo);font-weight:700}
+.rfbox{border:1.5px solid #FFD9C2;background:#FFFAF6;border-radius:10px;padding:10px;margin-top:10px}
+.ctl{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.ctl button{border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:9px 10px;font-size:13px;text-align:left;line-height:1.3;color:var(--txt);width:100%;font-family:inherit}
+.ctl button.on{border-color:var(--turquesa);background:#E5F6F8}.ctl button b{display:block;font-size:10px;color:var(--muted)}.ctl button.on b{color:var(--turquesa)}.ctl button i{display:block;font-style:normal;font-size:12px;color:var(--verde);margin-top:2px}
+.info{font-size:13px;color:var(--muted);background:#F5F7F8;border-radius:8px;padding:8px 10px;margin-top:6px;line-height:1.4}.info.warn{background:#FBE9E8;color:var(--rojo)}
+.foot{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;z-index:20}
+.foot .btn{flex:1}.foot .btn.s{flex:.6}
+.empty{color:var(--muted);font-size:14px;text-align:center;padding:16px}
+.sigbox{border:1.5px dashed var(--line);border-radius:10px;min-height:100px;background:#fff;display:grid;place-items:center;cursor:pointer;overflow:hidden}.sigbox img{max-height:100px;max-width:100%}
+.sigcv{width:100%;height:240px;border:1.5px solid var(--line);border-radius:10px;background:#fff;touch-action:none;display:block}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:flex-end}.modal.open{display:flex}
+.modal .box{background:#fff;width:100%;max-height:90vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+.modal .box h3{margin:0 0 10px;font-size:18px}
+.toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--pizarra);color:#fff;padding:10px 16px;border-radius:99px;font-size:14px;opacity:0;transition:.25s;z-index:60;pointer-events:none}.toast.show{opacity:1}
+.hid{display:none!important}
+.hoy{background:var(--pizarra);color:#fff;border-radius:var(--r);padding:18px;margin-bottom:14px}.hoy h2{margin:0 0 4px;color:var(--dorado);font-size:13px;letter-spacing:.05em}.hoy .f{font-size:22px;font-weight:700;margin-bottom:12px}.hoy p{margin:0 0 10px;font-size:13px;opacity:.85;line-height:1.4}
+.ritrow{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.ritrow:last-child{border-bottom:none}.ritrow .nm{flex:1;min-width:0;font-size:14px}.ritrow .nm small{display:block;color:var(--muted);font-size:12px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.kpi{background:#fff;border-radius:10px;padding:10px;border-top:4px solid var(--dorado)}.kpi b{display:block;font-size:24px;line-height:1.1}.kpi span{font-size:11px;color:var(--muted)}
+.kpi.t{border-color:var(--turquesa)}.kpi.r{border-color:var(--rojo)}.kpi.v{border-color:var(--verde)}.kpi.n{border-color:var(--naranjo)}
+.hlist div{position:relative;padding:8px 0 8px 36px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.4;counter-increment:p}.hlist{counter-reset:p}
+.hlist div::before{content:counter(p);position:absolute;left:0;top:8px;width:26px;height:26px;border-radius:50%;background:var(--dorado);color:var(--pizarra);font-weight:800;display:grid;place-items:center;font-size:12px}
+.sum dl{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;margin:0;font-size:13px}.sum dt{color:var(--muted)}.sum dd{margin:0}
+.toggle{display:flex;align-items:center;gap:10px;padding:12px;border:1.5px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;margin-top:10px}.toggle.on{border-color:var(--dorado);background:#FDF5DC}
+.toggle .sw{width:44px;height:26px;border-radius:13px;background:#CFD4D8;position:relative;flex:none}.toggle .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}.toggle.on .sw{background:var(--dorado)}.toggle.on .sw::after{left:21px}
+.toggle span{flex:1;font-size:14px;line-height:1.3}
+@media print{header,.foot,.noprint{display:none!important}body{background:#fff;padding:0;font-size:11px}.card{box-shadow:none;border:1px solid #999;break-inside:avoid}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"></div>
+  <div class="hbar"><div class="logo">RIT</div><h1>Reunión de Inicio de Turno<small>GCSSO · Codelco</small></h1><div id="timer" class="hid"></div><button class="help" onclick="ayuda()">?</button></div>
+  <div class="prog hid" id="prog"><span id="progT"></span><div class="bar"><i id="progB"></i></div></div>
+</header>
+<main id="main"></main>
+<div class="foot hid" id="foot"><button class="btn s" id="bPrev" onclick="go(-1)">Atrás</button><button class="btn p" id="bNext" onclick="go(1)">Siguiente</button></div>
+<div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+/* ========= CATÁLOGO RF · Línea Base RF v2 (05-10-2026) ========= */
+const RF = {
+RF01:{n:"Energía eléctrica",ev:"Interacción con energía eléctrica",en:"Eléctrica",c:[["CCP1","Personal acreditado para trabajos eléctricos"],["CCP2","Acceso restringido a equipos e instalaciones eléctricas"],["CCP3","Equipos y herramientas eléctricas verificadas"],["CCP4","Intervención de equipos en condición eléctricamente segura"],["CCM1","Selección y uso de EPP específico para la actividad"],["CCM2","Protecciones eléctricas en sistemas de alta y media tensión"],["CCM3","Capacidad de respuesta ante emergencia"]]},
+RF02:{n:"Trabajo en altura",ev:"Pérdida de equilibrio en altura física",en:"Mecánica: potencial gravitatoria + cinética",c:[["CCP1","Plataformas y superficies de trabajo estables e íntegras"],["CCP2","Personal acreditado realiza trabajos en altura"],["CCM1","Uso correcto de sistema personal para detención de caídas (SPDC)"],["CCM2","Puntos de anclaje y líneas de vida"],["CCM3","Capacidad de rescate en suspensión"]]},
+RF03:{n:"Maniobras de izaje",ev:"Pérdida de control de maniobras de izaje",en:"Mecánica: potencial gravitatoria + cinética; hidráulica, potencial elástica y eléctricas",c:[["CCP1","Equipos y elementos de izaje conforme a especificaciones técnicas"],["CCP2","Estabilizadores operativos y posicionamiento seguro de equipos de izaje móviles"],["CCP3","Personal acreditado para maniobras de izaje"],["CCP4","Comunicación bidireccional efectiva entre operador y rigger"],["CCP5","Plan de izaje"],["CCM1","Segregación y control de acceso en área de maniobras"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF04:{n:"Liberación descontrolada de energías",ev:"Pérdida de control de energías (hidráulica, neumática, mecánica, potencial, entre otras)",en:"Hidráulica, neumática, mecánica, potencial, entre otras",c:[["CCP1","Identificación, aislación, bloqueo y verificación de energía cero"],["CCP2","Sistemas y elementos de contención de energía"],["CCP3","Dispositivos de protección y alivio de presión"],["CCM1","Segregación y control de acceso"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF05:{n:"Caída de rocas en mina rajo",ev:"Pérdida de control de rocas en operaciones mineras a cielo abierto",en:"Mecánica - cinética - gravitatoria",c:[["CCP1","Modelo y monitoreo geotécnico de estabilidad de taludes y bancos"],["CCP2","Saneamiento y limpieza de bermas y taludes"],["CCP3","Control topográfico y drenaje"],["CCM1","Segregación física y contención estructural"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF06:{n:"Incendio",ev:"Pérdida de control de variables del fuego",en:"Química / calórica",c:[["CCP1","Mapeo de áreas críticas y gestión de materiales combustibles e inflamables"],["CCP2","Control de trabajos en caliente"],["CCP3","Sistemas de protección contra fuentes de ignición"],["CCM1","Sistemas de detección y extinción de incendios"],["CCM2","Capacidad de respuesta ante emergencias"]]},
+RF07:{n:"Sustancias peligrosas",ev:"Pérdida de control del manejo de sustancias químicas peligrosas",en:"Química / bioquímica",c:[["CCP1","Diseño, operación y señalización en procesos de manejo y almacenamiento de sustancias químicas peligrosas"],["CCP2","Competencias para manipulación segura de sustancias peligrosas"],["CCP3","Aislación, bloqueo y segregación para sustancias peligrosas"],["CCM1","Sistemas de detección / control de fugas, derrames, incendios y EPP químicos"],["CCM2","Capacidad de respuesta ante emergencia química"]]},
+RF08:{n:"Tronaduras y explosivos",ev:"Pérdida de control del proceso de tronadura",en:"Físico-química",c:[["CCP1","Personal acreditado en tronadura y manejo de explosivos"],["CCP2","Tronaduras ejecutadas según diseño aprobado"],["CCP3","Diseño y ejecución de tronadura conforme a condiciones reales"],["CCP4","Aislación física y evacuación segura de la zona de tronadura"],["CCP5","Vehículos acreditados y seguros para transporte y fabricación de explosivos"],["CCM1","Capacidad de respuesta ante emergencia"]]},
+RF09:{n:"Partes móviles",ev:"Interacción con partes móviles",en:"Mecánica",c:[["CCP1","Guardas y protecciones en partes móviles"],["CCP2","Aislación, bloqueo y verificación de energía cero"],["CCM1","Sistema de parada de emergencia"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF10:{n:"Vehículos",ev:"Pérdida de control del vehículo",en:"Cinética",c:[["CCP1","Conductor acreditado y apto física y psicológicamente"],["CCP2","Integridad mecánica y sistemas activos del vehículo"],["CCP3","Sistema integral de asistencia y monitoreo a la conducción"],["CCP4","Infraestructura vial conforme a diseño"],["CCM1","Capacidad de respuesta ante emergencia"]]},
+RF11:{n:"Espacios confinados",ev:"Interacción con espacios confinados",en:"Química, térmica, mecánica",c:[["CCP1","Sistema de ingreso controlado y vigilado"],["CCP2","Evaluación y monitoreo de atmósfera"],["CCP3","Identificación y preparación de espacios confinados"],["CCM1","Capacidad de respuesta y rescate ante emergencia en espacios confinados"]]},
+RF12:{n:"Metales fundidos",ev:"Interacción de metal fundido con agua y/o personas",en:"Térmica (calórica o calorífica)",c:[["CCP1","Personal capacitado para trabajar con metales fundidos"],["CCP2","Control de acceso a áreas de fundición"],["CCP3","Control operacional del metal fundido (traslado, monitoreo, refrigeración)"],["CCP4","Control de humedad en operaciones con metal fundido"],["CCM1","Protección personal y estructural contra metal fundido (EPP, casetas y contención)"],["CCM2","Capacidad de respuesta y rescate ante emergencia"]]},
+RF13:{n:"Caída de objetos",ev:"Pérdida de control de objetos en altura",en:"Mecánica gravitacional",c:[["CCP1","Estructuras y materiales sujetos en altura"],["CCP2","Control de trabajos en la vertical"],["CCM1","Sistemas de contención y segregación"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF14:{n:"Operación ferroviaria",ev:"Pérdida de control de operación ferroviaria",en:"Cinética",c:[["CCP1","Personal ferroviario acreditado"],["CCP2","Integridad operativa de vías y equipos ferroviarios"],["CCP3","Gestión integral del tráfico ferroviario y protección de cuadrillas"],["CCM1","Capacidad de respuesta ante emergencias ferroviarias"]]},
+RF15:{n:"Avalancha y aludes",ev:"Pérdida de estabilidad del manto de nieve",en:"Potencial gravitatoria + cinética",c:[["CCP1","Zonificación de peligro de avalanchas aplicada a toda instalación en superficie"],["CCP2","Sistema de alertas tempranas y estructura organizacional de invierno operativa"],["CCP3","Monitoreo nivo-meteorológico con instrumental operativo y emisión de boletín de riesgos (BDR)"],["CCP4","Ejecución del desencadenamiento preventivo con áreas evacuadas y segregadas"],["CCP5","Sistemas remotos de control de avalanchas (RACS)"],["CCM1","Respuesta a emergencia, búsqueda y rescate de víctimas de avalancha"],["CCM2","Instalaciones con resistencia estructural en zona de peligro de avalancha"]]},
+RF16:{n:"Vaciados, chimeneas, piques",ev:"Interacción con puntos de vaciado, chimeneas y piques",en:"Mecánica (potencia + gravitatoria + cinética)",c:[["CCP1","Condiciones seguras de ingreso y operación en piques y chimeneas"],["CCP2","Fortificación y sellado de excavaciones verticales"],["CCM1","Sistemas de protección contra caídas"],["CCM2","Capacidad de respuesta y rescate ante emergencia"]]},
+RF17:{n:"Bombeo de agua barro",ev:"Pérdida de control en operaciones con mineral húmedo",en:"Calórica",c:[["CCP1","Caracterización y delimitación de áreas de extracción con riesgo de bombeo de agua-barro"],["CCP2","Extracción en zonas de barro mediante telecomando o sistemas autónomos"],["CCP3","Gestión de secuencia y tasa de extracción conforme a diseño aprobado"],["CCP4","Integridad estructural en puntos de extracción, piques, buzones y chimeneas"]]},
+RF18:{n:"Planchoneo",ev:"Pérdida de control de estabilidad de roca subterránea",en:"Potencial gravitatoria + cinética",c:[["CCP1","Estabilización conforme a diseño geotécnico (sostenimiento, fortificación y acuñadura)"],["CCP2","Perforación y tronadura conforme a diseño geotécnico"],["CCM1","Segregación y control de acceso"],["CCM2","Operación remota en zonas críticas"],["CCM3","Capacidad de respuesta ante emergencia"]]},
+RF19:{n:"Estallido de rocas",ev:"Estallido de rocas",en:"Mecánica potencial - elástica",c:[["CCP1","Diseño de excavaciones subterráneas"],["CCP2","Sistema monitoreo geomecánico"],["CCP3","Control de procesos de P&T, desarrollo y pre acondicionamiento del macizo rocoso"],["CCP4","Soporte y fortificación instalada conforme a diseño geomecánico"],["CCM1","Segregación y control de acceso autorizado en zona de transición (ZT)"],["CCM2","Capacidad de respuesta ante emergencias por estallido de rocas"]]},
+RF20:{n:"Sílice",ev:"Pérdida de control de fuentes de emisión de polvo",en:"Química / bioquímica",c:[["CCP1","Supresión, humectación, colección y confinamiento de fuentes"],["CCP2","Control de emisiones en equipos productivos"],["CCM1","Ventilación subterránea y presurización de cabinas e instalaciones"],["CCM2","Aseo industrial no contaminante (control de dispersión)"],["CCM3","Protección respiratoria efectiva"]]},
+RF21:{n:"Arsénico",ev:"Pérdida de control de la exposición a arsénico",en:"Química / bioquímica",c:[["CCP1","Fuentes de arsénico identificadas, segregadas y restringidas"],["CCP2","Sistemas de captura y retención de arsénico operativos"],["CCP3","Aseo no contaminante de material arsenical (control de dispersión)"],["CCM1","Medidas higiénico sanitarias y protección personal"],["CCM2","Monitoreo ocupacional de exposición y salud por arsénico"]]},
+RF22:{n:"Falla de estructuras para tránsito",ev:"Pérdida de control de estructuras para tránsito y uso de personas",en:"Dinámica + cinética + potencial gravitatoria (mecánica) - deformación",c:[["CCP1","Diseño estructural y construcción de ETP conforme a normativa técnica vigente"],["CCP2","Inspección visual para identificar condiciones de riesgo a las personas en ETP operativas"],["CCP3","Restitución de funcionalidad segura y conservación de las ETP operativas"],["CCM1","Segregación física y señalización de ETP con vanos abiertos o condiciones de riesgo"],["CCM2","Respuesta ante emergencia"]]},
+RF23:{n:"Colapso estructural del macizo",ev:"Pérdida de control estructural del macizo rocoso",en:"Potencial gravitatoria + cinética",c:[["CCP1","Sistema de monitoreo geomecánico y control de la producción"],["CCP2","Estabilización conforme a diseño geotécnico (soporte y fortificación)"],["CCP3","Perforación y tronadura conforme a diseño geotécnico"],["CCM1","Segregación física y contención estructural"],["CCM2","Operación remota de equipos en zonas críticas"],["CCM3","Capacidad de respuesta ante emergencia"]]},
+RF24:{n:"Taludes",ev:"Pérdida de control de la estabilidad del talud",en:"Mecánica - cinética gravitatoria",c:[["CCP1","Sistema integral de caracterización, modelamiento y monitoreo geotécnico"],["CCP2","Perforación y tronadura conforme a diseño geotécnico (control de daño)"],["CCP3","Estabilización conforme a diseño geotécnico (saneamiento y fortificación de taludes)"],["CCM1","Pretiles y segregación de áreas"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF25:{n:"Equipos mineros e industriales",ev:"Pérdida de control de equipos mineros e industriales",en:"Cinética",c:[["CCP1","Conductor acreditado y apto física y psicológicamente"],["CCP2","Sistema integral de asistencia y monitoreo a la conducción"],["CCP3","Integridad de componentes críticos del equipo (mecánicos, hidráulicos y eléctricos)"],["CCP4","Infraestructura vial conforme a diseño (bermas, pretiles, radios, drenaje)"],["CCM1","Cabinas de protección (ROPS y FOPS)"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF26:{n:"Equipos autónomos",ev:"Pérdida de control de equipos autónomos",en:"Cinética",c:[["CCP1","Sistemas ODS y GPS (navegación segura del equipo autónomo)"],["CCP2","Frenos, dirección, neumáticos y sistemas tecnológicos en condición segura"],["CCP3","Personal acreditado para operar y supervisar equipos autónomos"],["CCP4","Infraestructura vial para equipos autónomos (rutas, tránsito y control de acceso)"],["CCM1","Capacidad de respuesta ante emergencia y parada de emergencia"]]},
+RF27:{n:"Atropello",ev:"Interacción de personas con equipos / vehículos",en:"Cinética",c:[["CCP1","Rutas vehiculares y peatonales conforme a diseño (segregación, señalética, iluminación)"],["CCP2","Sistema anti atropello y advertencia de proximidad"],["CCP3","Alta visibilidad en personas, vehículos y equipos"],["CCP4","Comunicación bidireccional efectiva entre personal y conductores"],["CCM1","Capacidad de respuesta ante emergencia"]]},
+RF28:{n:"Caving",ev:"Pérdida de control de caving",en:"Mecánica (potencial gravitatoria + cinética y neumática)",c:[["CCP1","Sistema de monitoreo geomecánico y control de la producción"],["CCP2","Fracturamiento del macizo e incorporación de áreas"],["CCP3","Perforación y tronadura conforme a diseño geotécnico"],["CCM1","Segregación y control de acceso"],["CCM2","Capacidad de respuesta ante emergencia"]]},
+RF29:{n:"Caída a cuerpos líquidos",ev:"Caída a cuerpos líquidos",en:"Cinética + potencial gravitatoria",c:[["CCP1","Zonas de cuerpos líquidos aisladas y señalizadas"],["CCP2","Personal capacitado para trabajos en cuerpos líquidos"],["CCP3","Infraestructura segura y comunicación operativa en cuerpos líquidos"],["CCM1","Capacidad de respuesta y rescate ante emergencia en cuerpos líquidos"]]},
+RF30:{n:"Tiro y arrastre",ev:"Pérdida de control de maniobras de tiro y arrastre",en:"Mecánica",c:[["CCP1","Sistemas de tiro y arrastre íntegros y operativos antes de uso"],["CCP2","Dispositivos de seguridad instalados y operativos en maniobras de arrastre"],["CCP3","Accesorios de arrastre certificados y áreas de maniobra señalizadas"],["CCM1","Barreras físicas instaladas para contener fallas de arrastre"],["CCM2","Respuesta inmediata ante emergencias en maniobras de arrastre"]]},
+RF31:{n:"Incendio de equipos mineros e industriales",ev:"Pérdida de control de variables del fuego en equipos mineros e industriales",en:"Calórica",c:[["CCP1","Operador acreditado y apto física/psicológicamente"],["CCP2","Integridad de sistemas eléctricos, hidráulicos, combustible y lubricación"],["CCM1","Sistema de detección y supresión de incendios"],["CCM2","Respuesta inmediata ante incendio en equipo"]]}
+};
+const PREP=[["Instructivos","¿Están los instructivos?"],["Materiales","¿Están los materiales?"],["Herramientas","¿Herramientas en buenas condiciones?"],["EPP","¿Se dispone de los EPP?"]];
+const ENTORNO=[["clima","☁️ Condiciones climáticas"],["simultaneos","🔀 Trabajos en simultáneo / contiguos"],["correctivas","🔧 Mantenciones correctivas"],["otros","⚠️ Otra condición"]];
+const MIN_ACTS=3, MAX_MIN=30;
+
+/* ========= ALMACENAMIENTO ========= */
+const LS=(()=>{try{localStorage.setItem("__t","1");localStorage.removeItem("__t");return localStorage;}catch(e){const m={};return{getItem:k=>k in m?m[k]:null,setItem:(k,v)=>{m[k]=String(v);},removeItem:k=>{delete m[k];}};}})();
+const KEY="rit6.rits", KEYC="rit6.cfg";
+const today=()=>new Date().toISOString().slice(0,10), uid=()=>Math.random().toString(36).slice(2,9), hora=()=>new Date().toTimeString().slice(0,5);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=f=>new Date(f+"T12:00:00").toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"});
+const ini=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1700);}
+let DB=JSON.parse(LS.getItem(KEY)||"[]");
+let CFG=Object.assign({centro:"",gerencia:"",sup:"",area:"",supervisor:"",turno:"Día",cuadrilla:[]},JSON.parse(LS.getItem(KEYC)||"{}"));
+const save=()=>{LS.setItem(KEY,JSON.stringify(DB));LS.setItem(KEYC,JSON.stringify(CFG));};
+let R=null, step=0, view="home";
+const minutos=d=>{if(!d.inicioHora)return 0;const [a,b]=d.inicioHora.split(":").map(Number);const [c,e]=(d.finHora||hora()).split(":").map(Number);return Math.max(0,c*60+e-(a*60+b));};
+const pend=()=>{const p=[];DB.filter(r=>r.cerrada).forEach(r=>r.aportes.forEach(a=>{if(a.prop&&a.estado!=="cumplido")p.push({...a,ritId:r.id,fecha0:r.fecha});}));return p;};
+function nuevaRIT(){
+  return {id:uid(),fecha:today(),inicioHora:hora(),finHora:"",dirige:"",ultimo:false,asistentes:[],condicion:{},
+    acts:Array.from({length:MIN_ACTS},()=>({id:uid(),nombre:"",critica:false,prep:{},tv:{},rf:"",cons:"",ctl:[]})),
+    entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:""};
+}
+const STEPS=()=>R&&R.ultimo?["dirige","asist","acts","entorno","ultimo","cierre"]:["dirige","asist","acts","entorno","cierre"];
+const GUIA={dirige:"La reunión se hace <b>cada día</b> al inicio de la jornada, dura máximo <b>30 min</b> y la dirige un trabajador <b>distinto cada día</b>.",
+ asist:"<b>Paso 1 de la guía:</b> pregunta a cada asistente si está en condiciones de realizar su trabajo.",
+ acts:"<b>Pasos 3 a 5:</b> escribe las actividades del día, marca las críticas, revisa instructivos / materiales / herramientas / EPP, y por cada una define el riesgo de fatalidad y sus controles.",
+ entorno:"<b>Paso 6:</b> ¿qué condiciones del entorno podrían afectar la ejecución? Clima, trabajos en simultáneo, mantenciones correctivas.",
+ ultimo:"<b>Pasos 8 y 9 (último día del turno):</b> pide aportes para la gestión de riesgos y designen a un trabajador para ser reconocido.",
+ cierre:"<b>Paso 10:</b> para cerrar, repasen los riesgos de fatalidad y sus controles. Luego firman quien dirigió y el supervisor."};
+
+/* ========= RENDER ========= */
+function render(){
+  const enRit=view==="rit"&&R;
+  document.getElementById("foot").classList.toggle("hid",!enRit);
+  document.getElementById("prog").classList.toggle("hid",!enRit);
+  const tm=document.getElementById("timer");tm.classList.toggle("hid",!(enRit&&!R.cerrada));
+  if(enRit&&!R.cerrada){const m=minutos(R);tm.textContent=`⏱ ${m}/${MAX_MIN} min`;tm.classList.toggle("over",m>MAX_MIN);}
+  const main=document.getElementById("main");
+  if(view==="home"){main.innerHTML=home();return;}
+  if(view==="rep"){main.innerHTML=reporte();return;}
+  const S=STEPS(), k=S[step];
+  document.getElementById("progT").textContent=`Paso ${step+1} de ${S.length}`;
+  document.getElementById("progB").style.width=((step+1)/S.length*100)+"%";
+  document.getElementById("bPrev").textContent=step===0?"Inicio":"Atrás";
+  const bn=document.getElementById("bNext");
+  if(k==="cierre"){bn.textContent=R.cerrada?"Volver al inicio":"✓ Cerrar RIT";bn.className=R.cerrada?"btn s":"btn t";}
+  else{bn.textContent="Siguiente";bn.className="btn p";}
+  main.innerHTML=`<div class="guia">${GUIA[k]}</div>`+({dirige:pDirige,asist:pAsist,acts:pActs,entorno:pEntorno,ultimo:pUltimo,cierre:pCierre})[k]();
+  const qb=document.getElementById("qrBox");if(qb)drawQR(qb,joinURL(),170);
+}
+function setView(v){view=v;render();window.scrollTo(0,0);}
+function go(d){
+  const S=STEPS();
+  if(step===0&&d<0){setView("home");return;}
+  if(S[step]==="cierre"&&d>0){if(R.cerrada)setView("home");else cerrar();return;}
+  if(d>0&&!validar(S[step]))return;
+  step=Math.max(0,Math.min(S.length-1,step+d));render();window.scrollTo(0,0);
+}
+function validar(k){
+  if(k==="dirige"&&!R.dirige){toast("Elige quién dirige hoy");return false;}
+  if(k==="asist"&&!R.asistentes.length){toast("Marca al menos un asistente");return false;}
+  return true;
+}
+function abrir(id){R=DB.find(r=>r.id===id);step=R.cerrada?STEPS().length-1:0;setView("rit");}
+function iniciarHoy(){
+  let r=DB.find(x=>x.fecha===today()&&!x.cerrada);
+  if(!r){ if(!CFG.cuadrilla.length){modalCuadrilla(true);return;} r=nuevaRIT(); const hechos=DB.slice(-6).map(x=>x.dirige); r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||""; DB.push(r); save(); }
+  R=r; step=0; setView("rit");
+}
+
+/* ========= INICIO ========= */
+function home(){
+  const hoy=DB.find(x=>x.fecha===today()), pasadas=[...DB].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30), p=pend();
+  return `<div class="hoy"><h2>HOY</h2><div class="f">${fmt(today())}</div>
+   ${!CFG.cuadrilla.length?`<p>Primero arma tu cuadrilla y datos del área (un minuto, una sola vez).</p><button class="btn p big w" onclick="modalCuadrilla(true)">Configurar cuadrilla</button>`:
+     hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada a las ${hoy.finHora} · ${minutos(hoy)} min · dirigió ${esc(hoy.dirige)}</p><button class="btn s w" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button>`:`<p>RIT de hoy en curso · dirige ${esc(hoy.dirige)||"—"} · ${hoy.asistentes.length} presentes</p><button class="btn p big w" onclick="iniciarHoy()">▶ Continuar RIT de hoy</button>`):
+     `<p>${esc(CFG.area||"Área sin definir")} · ${CFG.cuadrilla.length} en cuadrilla · supervisor ${esc(CFG.supervisor||"—")}</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy</button>`}
+   <div class="row" style="margin-top:10px"><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalCuadrilla()">👥 Cuadrilla y datos</button><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="setView('rep')">📊 Reporte</button></div></div>
+  ${p.length?`<div class="card"><h2>Aportes pendientes del turno anterior <span class="tag no">${p.length}</span></h2>${p.map(a=>`<div class="ritrow"><div class="nm">${esc(a.prop)}<small>${esc(a.resp)} · compromiso ${a.fecha||"s/f"}</small></div><button class="btn t sm" onclick="cumplir('${a.ritId}','${esc(a.prop)}')">Cumplido</button></div>`).join("")}</div>`:""}
+  <div class="card"><h2>RIT anteriores</h2>${pasadas.map(x=>`<div class="ritrow" onclick="abrir('${x.id}')" style="cursor:pointer"><div class="nm"><b>${fmt(x.fecha)}</b>${x.ultimo?' <span class="tag" style="background:#FDF1D7;color:#8A5E00">último día</span>':""}<small>${x.cerrada?"✓ cerrada · "+minutos(x)+" min":"⚠️ sin cerrar"} · dirigió ${esc(x.dirige)||"—"} · ${x.asistentes.length} asist. · ${[...new Set(x.acts.map(a=>a.rf).filter(Boolean))].join(" ")||"sin RF"}${tvs(x).length?" · 🟩 "+tvs(x).length+" TV":""}</small></div><span style="color:var(--muted)">›</span></div>`).join("")||`<div class="empty">Aquí irán apareciendo las RIT de cada día.</div>`}</div>`;
+}
+function cumplir(ritId,prop){const r=DB.find(x=>x.id===ritId);const a=r.aportes.find(x=>x.prop===prop);if(a)a.estado="cumplido";save();render();toast("Aporte cumplido");}
+const tvs=r=>{const t=[];r.acts.forEach(a=>Object.entries(a.tv||{}).forEach(([k,v])=>t.push({act:a.nombre,item:k,...v})));return t;};
+function alertas(r){const al=[];r.acts.forEach(a=>{PREP.forEach(([p])=>{if(a.prep[p]===false)al.push(`${a.nombre||"Actividad"}: ${p} NO · TV ${a.tv[p]?.num||"s/n"}`);});a.ctl.forEach(c=>{if(!c.enc)al.push(`${a.rf}-${c.c} sin encargado`);});});
+  Object.entries(r.condicion).forEach(([id,c])=>{if(c.ok===false){const p=CFG.cuadrilla.find(x=>x.id===id);al.push(`${p?p.nombre:"Trabajador"} no en condiciones`);}});
+  if(r.finHora&&minutos(r)>MAX_MIN)al.push(`Reunión de ${minutos(r)} min (máx. ${MAX_MIN})`);return al;}
+
+/* ========= CUADRILLA Y DATOS ========= */
+function modalCuadrilla(first){
+  openModal(`<h3>👥 Cuadrilla y datos del área</h3>${first?`<div class="info">Se guarda una sola vez; después solo tocas "Iniciar RIT de hoy".</div>`:""}
+   <div class="row"><div><label>Gerencia</label><input id="cG" value="${esc(CFG.gerencia)}" placeholder="GOP"></div><div><label>Superintendencia / EE.CC.</label><input id="cS" value="${esc(CFG.sup)}" placeholder="SINFRA"></div></div>
+   <label>Área / frente de trabajo</label><input id="cA" value="${esc(CFG.area)}" placeholder="Ej: Techumbres Planta LR">
+   <div class="row"><div><label>Supervisor</label><input id="cP" value="${esc(CFG.supervisor)}"></div><div><label>Turno</label><select id="cT">${["Día","Noche","A","B","C","D"].map(t=>`<option ${t===CFG.turno?"selected":""}>${t}</option>`).join("")}</select></div></div>
+   <label>Integrantes de la cuadrilla</label><div id="cuadL">${cuadHTML()}</div>
+   <div class="row" style="margin-top:6px"><input id="cN" placeholder="Nombre"><input id="cC" placeholder="Cargo / empresa"></div>
+   <button class="btn s sm w" onclick="addCuad()">+ Agregar integrante</button>
+   <button class="btn p w" onclick="guardarCfg()">Guardar</button>`);
+}
+function cuadHTML(){return CFG.cuadrilla.map(p=>`<div class="persona"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}</small></div><button class="btn d" onclick="delCuad('${p.id}')">✕</button></div>`).join("")||`<div class="empty">Sin integrantes aún.</div>`;}
+function addCuad(){const n=document.getElementById("cN").value.trim();if(!n)return;CFG.cuadrilla.push({id:uid(),nombre:n,cargo:document.getElementById("cC").value.trim()});save();document.getElementById("cuadL").innerHTML=cuadHTML();document.getElementById("cN").value="";document.getElementById("cC").value="";document.getElementById("cN").focus();}
+function delCuad(id){CFG.cuadrilla=CFG.cuadrilla.filter(p=>p.id!==id);save();document.getElementById("cuadL").innerHTML=cuadHTML();}
+function guardarCfg(){const g=i=>document.getElementById(i).value.trim();Object.assign(CFG,{gerencia:g("cG"),sup:g("cS"),area:g("cA"),supervisor:g("cP"),turno:g("cT")});save();closeModal();render();}
+
+/* ========= PASO: quién dirige ========= */
+function pDirige(){
+  const hechos=DB.filter(x=>x.id!==R.id).slice(-6).map(x=>x.dirige);
+  return `<div class="q">¿Quién dirige la reunión hoy?</div>
+   ${CFG.cuadrilla.map(p=>`<div class="persona ${R.dirige===p.nombre?"sel":""}" onclick="R.dirige='${esc(p.nombre)}';save();render()"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${hechos.includes(p.nombre)?" · ya dirigió hace poco":""}</small></div>${R.dirige===p.nombre?"✓":""}</div>`).join("")}
+   <div class="toggle ${R.ultimo?"on":""}" onclick="R.ultimo=!R.ultimo;save();render()"><div class="sw"></div><span><b>Hoy es el último día del turno</b><br><small style="color:var(--muted)">Se agrega el paso de aportes y reconocimiento</small></span></div>`;
+}
+
+/* ========= PASO: asistencia ========= */
+function joinURL(){const u=new URL(location.href);u.search="";u.hash="";return `${u.href}?join=${R.id}&a=${encodeURIComponent(CFG.area)}&f=${R.fecha}`;}
+function pAsist(){
+  const noOk=Object.values(R.condicion).filter(c=>c.ok===false).length;
+  return `<div class="q">¿Quiénes están y en condiciones?</div>
+   <div class="info" style="margin-bottom:10px">Toca el nombre para marcar presente. Luego <b>OK</b> si está en condiciones de trabajar, <b>NO</b> si no.</div>
+   ${CFG.cuadrilla.map(p=>{const pres=R.asistentes.includes(p.id),c=R.condicion[p.id]||{};return `<div class="persona ${pres?"on":""}"><div class="av" onclick="togAsist('${p.id}')">${pres?"✓":ini(p.nombre)}</div><div class="nm" onclick="togAsist('${p.id}')">${esc(p.nombre)}<small>${esc(p.cargo||"")}${c.ok===false?` · <span style="color:var(--rojo)">${esc(c.motivo)}</span>`:""}</small></div>
+     ${pres?`<div class="yn"><button class="${c.ok===true?"si":""}" onclick="R.condicion['${p.id}']={ok:true};save();render()">OK</button><button class="${c.ok===false?"no":""}" onclick="modalCond('${p.id}')">NO</button></div>`:""}</div>`;}).join("")}
+   <button class="btn s w" onclick="CFG.cuadrilla.forEach(p=>{if(!R.asistentes.includes(p.id))R.asistentes.push(p.id);if(!R.condicion[p.id])R.condicion[p.id]={ok:true};});save();render()">Todos presentes y OK</button>
+   <div class="card" style="margin-top:12px"><h2>Registro por QR (opcional) <span class="tag ok">${R.asistentes.length} presentes</span>${noOk?` <span class="tag no">${noOk} no en condiciones</span>`:""}</h2>
+    <div id="qrBox" style="display:grid;place-items:center"></div><div class="info" style="text-align:center">Cada persona escanea, escribe su nombre y le aparece un QR; tú lo lees con la cámara.</div>
+    <div class="row" style="margin-top:8px"><button class="btn s sm" onclick="pantallaQR()">Ampliar QR</button><button class="btn t sm" onclick="escanear()">📷 Escanear</button></div></div>`;
+}
+function togAsist(id){const i=R.asistentes.indexOf(id);if(i<0){R.asistentes.push(id);R.condicion[id]={ok:true};}else{R.asistentes.splice(i,1);delete R.condicion[id];}save();render();}
+function modalCond(id){const p=CFG.cuadrilla.find(x=>x.id===id),c=R.condicion[id]||{};openModal(`<h3>⚠️ ${esc(p.nombre)} no está en condiciones</h3><label>¿Qué pasa y qué se hace?</label><textarea id="cM" placeholder="Ej: fatiga; se reasigna a apoyo en piso sin carga / se deriva a policlínico">${esc(c.motivo||"")}</textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=document.getElementById('cM').value.trim();if(!m){toast('Indica el motivo');return;}R.condicion['${id}']={ok:false,motivo:m};save();closeModal();render()">Registrar</button></div>`);}
+
+/* ========= PASO: actividades ========= */
+function pActs(){
+  return `<div class="q">¿Qué haremos hoy y estamos preparados?</div>
+   ${R.acts.map((a,i)=>actHTML(a,i)).join("")}
+   <button class="btn s w" onclick="R.acts.push({id:uid(),nombre:'',critica:false,prep:{},tv:{},rf:'',cons:'',ctl:[]});save();render()">+ Otra actividad</button>`;
+}
+const act=id=>R.acts.find(a=>a.id===id);
+function actHTML(a,i){
+  const d=RF[a.rf];
+  return `<div class="act ${a.critica?"crit":""}">
+   <div class="top"><div class="num">${i+1}</div><input value="${esc(a.nombre)}" placeholder="Actividad ${i+1}: qué y dónde" oninput="act('${a.id}').nombre=this.value;save()">${R.acts.length>MIN_ACTS?`<button class="btn d" onclick="R.acts=R.acts.filter(x=>x.id!=='${a.id}');save();render()">✕</button>`:""}</div>
+   <div class="chips" style="margin-top:8px"><div class="chip ${a.critica?"on":""}" onclick="act('${a.id}').critica=!act('${a.id}').critica;save();render()">${a.critica?"🔥 Crítica":"Marcar como crítica"}</div></div>
+   <div class="prep">${PREP.map(([p,q])=>`<span style="font-size:14px">${q}${a.prep[p]===false&&a.tv[p]?`<br><span class="tag tv" onclick="modalTV('${a.id}','${p}')">🟩 TV ${esc(a.tv[p].num)}</span>`:""}</span><div class="yn"><button class="${a.prep[p]===true?"si":""}" onclick="act('${a.id}').prep['${p}']=true;delete act('${a.id}').tv['${p}'];save();render()">SÍ</button><button class="${a.prep[p]===false?"no":""}" onclick="modalTV('${a.id}','${p}')">NO</button></div>`).join("")}</div>
+   <div class="rfbox"><label style="margin-top:0">Riesgo de fatalidad de esta actividad</label>
+    <select onchange="const x=act('${a.id}');x.rf=this.value;x.ctl=[];save();render()"><option value="">— Sin RF / elegir —</option>${Object.keys(RF).map(k=>`<option value="${k}" ${k===a.rf?"selected":""}>${k} · ${RF[k].n}</option>`).join("")}</select>
+    ${d?`<div class="info"><b>${d.ev}</b> · energía ${d.en}</div><label>¿Qué podría pasar?</label><input value="${esc(a.cons)}" placeholder="Consecuencia para personas / activos" oninput="act('${a.id}').cons=this.value;save()">
+    <label>Controles críticos que vamos a verificar <span class="tag ccp">CCP</span> <span class="tag ccm">CCM</span></label>
+    <div class="ctl">${d.c.map(([c,t])=>{const m=a.ctl.find(x=>x.c===c);return `<button class="${m?"on":""}" onclick="togCtl('${a.id}','${c}')"><b>${a.rf}-${c}</b>${t}${m?`<i>👤 Confirma: ${esc(m.enc)}</i>`:""}</button>`;}).join("")}</div>`:""}
+   </div></div>`;
+}
+function modalTV(aid,p){const a=act(aid),tv=a.tv[p]||{num:"",desc:""};openModal(`<h3>🟩 Levantar Tarjeta Verde</h3><div class="info"><b>${esc(a.nombre)||"Actividad"}</b> · ${p}: NO</div><label>N° de Tarjeta Verde</label><input id="tvN" value="${esc(tv.num)}" placeholder="TV-00000"><label>¿Qué pasó y qué se hizo?</label><textarea id="tvD" placeholder="Qué falta o no conforma, dónde, y la acción inmediata (reprogramar, reemplazar, segregar…)">${esc(tv.desc)}</textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="guardarTV('${aid}','${p}')">Registrar</button></div>`);setTimeout(()=>document.getElementById("tvN").focus(),50);}
+function guardarTV(aid,p){const num=document.getElementById("tvN").value.trim(),desc=document.getElementById("tvD").value.trim();if(!num){toast("Falta el N° de TV");return;}if(!desc){toast("Describe qué pasó");return;}const a=act(aid);a.prep[p]=false;a.tv[p]={num,desc,hora:hora()};save();closeModal();render();toast("TV "+num+" registrada");}
+function togCtl(aid,c){
+  const a=act(aid),i=a.ctl.findIndex(x=>x.c===c);if(i>=0){a.ctl.splice(i,1);save();render();return;}
+  const t=RF[a.rf].c.find(x=>x[0]===c)[1],nombres=CFG.cuadrilla.filter(p=>R.asistentes.includes(p.id)).map(p=>p.nombre);
+  openModal(`<h3>👤 ¿Quién confirma este control en terreno?</h3><div class="info"><span class="tag ${c.startsWith("CCP")?"ccp":"ccm"}">${a.rf}-${c}</span> ${t}</div>
+   ${nombres.map(n=>`<div class="persona" onclick="a=act('${aid}');a.ctl.push({c:'${c}',enc:'${esc(n)}'});save();closeModal();render()"><div class="av">${ini(n)}</div><div class="nm">${esc(n)}</div></div>`).join("")||`<div class="info warn">Primero marca la asistencia.</div>`}
+   <button class="btn s w" onclick="closeModal()">Cancelar</button>`);
+}
+
+/* ========= PASO: entorno ========= */
+function pEntorno(){
+  return `<div class="q">¿Algo del entorno puede afectarnos hoy?</div>
+   <div class="info" style="margin-bottom:10px">Toca lo que aplica y escribe una línea. Si no hay nada, sigue.</div>
+   ${ENTORNO.map(([k,l])=>`<div class="toggle ${k in R.entorno?"on":""}" onclick="if('${k}' in R.entorno){delete R.entorno['${k}'];}else{R.entorno['${k}']='';}save();render()"><div class="sw"></div><span>${l}</span></div>
+     ${k in R.entorno?`<textarea style="margin-top:6px" placeholder="Describe y qué se hace al respecto" oninput="R.entorno['${k}']=this.value;save()" onclick="event.stopPropagation()">${esc(R.entorno[k])}</textarea>`:""}`).join("")}`;
+}
+
+/* ========= PASO: último día ========= */
+function pUltimo(){
+  return `<div class="q">Último día: aportes y reconocimiento</div>
+   <div class="card"><h2>¿Qué mejorarían para trabajar más seguros?</h2><div class="info">Herramientas, método de trabajo, comunicación, equipamiento, señalética, EPP… Se revisan al inicio del próximo turno.</div>
+   ${R.aportes.map((x,i)=>`<div class="rfbox" style="background:#fff"><textarea placeholder="Propuesta" oninput="R.aportes[${i}].prop=this.value;save()">${esc(x.prop)}</textarea><div class="row"><div><label>Responsable</label><input value="${esc(x.resp)}" list="dl" oninput="R.aportes[${i}].resp=this.value;save()"></div><div><label>Para cuándo</label><input type="date" value="${x.fecha||""}" oninput="R.aportes[${i}].fecha=this.value;save()"></div></div><button class="btn d" onclick="R.aportes.splice(${i},1);save();render()">Quitar</button></div>`).join("")}
+   <button class="btn s w" onclick="R.aportes.push({prop:'',resp:'',fecha:'',estado:'pendiente'});save();render()">+ Aporte</button></div>
+   <div class="card"><h2>¿A quién reconocemos por su gestión de riesgos?</h2>
+   ${R.recon.map((x,i)=>`<div class="rfbox" style="background:#fff"><input value="${esc(x.quien)}" list="dl" placeholder="Nombre" oninput="R.recon[${i}].quien=this.value;save()"><textarea style="margin-top:6px" placeholder="Por qué (conducta, detuvo una tarea insegura, aporte…)" oninput="R.recon[${i}].motivo=this.value;save()">${esc(x.motivo)}</textarea><button class="btn d" onclick="R.recon.splice(${i},1);save();render()">Quitar</button></div>`).join("")}
+   <button class="btn s w" onclick="R.recon.push({quien:'',motivo:''});save();render()">+ Reconocimiento</button></div>
+   <datalist id="dl">${CFG.cuadrilla.map(p=>`<option value="${esc(p.nombre)}">`).join("")}</datalist>`;
+}
+
+/* ========= PASO: cierre ========= */
+function pCierre(){
+  const nombres=CFG.cuadrilla.filter(p=>R.asistentes.includes(p.id)).map(p=>p.nombre), al=alertas(R), rfs=[...new Set(R.acts.map(a=>a.rf).filter(Boolean))];
+  return `<div class="q">Repaso y firmas</div>
+   <div class="card sum"><dl><dt>Fecha</dt><dd>${fmt(R.fecha)}${R.ultimo?" · último día":""}</dd><dt>Área</dt><dd>${esc(CFG.area)} · ${esc(CFG.gerencia)} / ${esc(CFG.sup)}</dd><dt>Dirige</dt><dd>${esc(R.dirige)}</dd><dt>Supervisor</dt><dd>${esc(CFG.supervisor)}</dd><dt>Duración</dt><dd>${R.inicioHora} → ${R.finHora||"en curso"} · ${minutos(R)} min</dd><dt>Asistentes</dt><dd>${nombres.length}: ${esc(nombres.join(", "))}</dd></dl>
+   ${al.length?`<div class="info warn noprint"><b>Pendientes (${al.length}):</b><br>${al.map(esc).join("<br>")}</div>`:`<div class="info" style="color:var(--verde)">✓ Sin pendientes</div>`}</div>
+   <div class="card"><h2>Riesgos de fatalidad y controles de hoy</h2>${rfs.map(k=>`<div class="rfbox"><span class="tag rf">${k}</span> <b>${RF[k].n}</b>${R.acts.filter(a=>a.rf===k).map(a=>`<div style="font-size:13px;margin-top:6px"><b>${esc(a.nombre)}</b>${a.critica?' <span class="tag no">crítica</span>':""}${a.ctl.map(c=>`<br><span class="tag ${c.c.startsWith("CCP")?"ccp":"ccm"}">${c.c}</span> ${RF[k].c.find(x=>x[0]===c.c)[1]} → 👤 ${esc(c.enc)}`).join("")||"<br><span style='color:var(--rojo)'>sin controles marcados</span>"}</div>`).join("")}</div>`).join("")||`<div class="empty">No se asignó RF a ninguna actividad.</div>`}
+   ${tvs(R).map(t=>`<div class="info">🟩 <b>TV ${esc(t.num)}</b> · ${esc(t.act)} · ${t.item}: ${esc(t.desc)}</div>`).join("")}
+   ${Object.entries(R.entorno).filter(([k,v])=>v).map(([k,v])=>`<div class="info">${ENTORNO.find(e=>e[0]===k)[1]}: ${esc(v)}</div>`).join("")}</div>
+   ${R.ultimo?`<div class="card"><h2>Aportes y reconocimiento</h2>${R.aportes.filter(a=>a.prop).map(a=>`<div class="info">📌 ${esc(a.prop)} · ${esc(a.resp)} · ${a.fecha||"s/f"}</div>`).join("")}${R.recon.filter(a=>a.quien).map(a=>`<div class="info">🏅 ${esc(a.quien)}: ${esc(a.motivo)}</div>`).join("")}</div>`:""}
+   <div class="card"><h2>Firmas</h2><div class="row"><div><label>Dirige · ${esc(R.dirige)}</label><div class="sigbox" onclick="${R.cerrada?"":"modalFirma('firmaDirige')"}">${R.firmaDirige?`<img src="${R.firmaDirige}">`:`<span style="color:var(--muted);font-size:13px">Toca para firmar</span>`}</div></div><div><label>Supervisor · ${esc(CFG.supervisor)}</label><div class="sigbox" onclick="${R.cerrada?"":"modalFirma('firmaSup')"}">${R.firmaSup?`<img src="${R.firmaSup}">`:`<span style="color:var(--muted);font-size:13px">Toca para firmar</span>`}</div></div></div>
+   <label>Observaciones</label><textarea oninput="R.obs=this.value;save()" ${R.cerrada?"readonly":""}>${esc(R.obs)}</textarea><button class="btn s sm w noprint" onclick="window.print()">Imprimir / PDF</button></div>`;
+}
+let drawing=false,firmaKey="";
+function modalFirma(k){firmaKey=k;openModal(`<h3>✍️ Firma · ${esc(k==="firmaDirige"?R.dirige:CFG.supervisor)}</h3><canvas class="sigcv" id="sig"></canvas><div class="row" style="margin-top:10px"><button class="btn s" onclick="const c=document.getElementById('sig');c.getContext('2d').clearRect(0,0,c.width,c.height);c._d=false">Limpiar</button><button class="btn t" onclick="const c=document.getElementById('sig');if(!c._d){toast('Dibuja la firma');return;}R[firmaKey]=c.toDataURL();save();closeModal();render()">Guardar</button></div>`);const cv=document.getElementById("sig");cv.width=cv.clientWidth*2;cv.height=480;cv._d=false;}
+const pos=(cv,e)=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height};};
+document.addEventListener("pointerdown",e=>{const cv=e.target.closest("#sig");if(!cv)return;drawing=true;cv._d=true;const x=cv.getContext("2d"),p=pos(cv,e);x.beginPath();x.moveTo(p.x,p.y);});
+document.addEventListener("pointermove",e=>{if(!drawing)return;const cv=document.getElementById("sig");if(!cv)return;const x=cv.getContext("2d");x.lineWidth=3;x.lineCap="round";x.strokeStyle="#1E2428";const p=pos(cv,e);x.lineTo(p.x,p.y);x.stroke();});
+document.addEventListener("pointerup",()=>{drawing=false;});
+function cerrar(){
+  const f=[];if(!R.firmaDirige)f.push("firma de quien dirige");if(!R.firmaSup)f.push("firma del supervisor");
+  if(f.length){toast("Falta: "+f.join(" y "));return;}
+  const al=alertas(R);if(al.length&&!confirm(`Hay ${al.length} pendiente(s). ¿Cerrar igual?`))return;
+  R.cerrada=true;R.finHora=hora();save();toast(`RIT cerrada · ${minutos(R)} min`);setView("home");
+}
+
+/* ========= QR ========= */
+function openModal(h){document.getElementById("modalBox").innerHTML=h;document.getElementById("modal").classList.add("open");}
+function closeModal(){document.getElementById("modal").classList.remove("open");}
+function drawQR(el,t,s){el.innerHTML="";if(typeof QRCode==="undefined"){el.innerHTML=`<div class="info">QR no disponible sin internet.</div>`;return;}new QRCode(el,{text:t,width:s,height:s,correctLevel:QRCode.CorrectLevel.M});}
+function pantallaQR(){openModal(`<h3 style="justify-content:center">Escanea para registrarte</h3><div id="qrBig" style="display:grid;place-items:center;padding:10px"></div><div style="text-align:center;font-size:13px;color:var(--muted)">${esc(CFG.area)} · ${fmt(R.fecha)}</div><button class="btn s w" onclick="closeModal()">Cerrar</button>`);drawQR(document.getElementById("qrBig"),joinURL(),Math.min(320,innerWidth-80));}
+function registrar(n,c){n=(n||"").trim();if(!n)return false;let p=CFG.cuadrilla.find(x=>x.nombre.toLowerCase()===n.toLowerCase());if(!p){p={id:uid(),nombre:n,cargo:(c||"").trim()};CFG.cuadrilla.push(p);}if(!R.asistentes.includes(p.id)){R.asistentes.push(p.id);R.condicion[p.id]={ok:true};}save();return true;}
+let scanStream=null,scanRAF=null;
+function escanear(){openModal(`<h3>Escanear QR del participante</h3><video id="vid" playsinline style="width:100%;border-radius:10px;background:#000"></video><canvas id="cvs" class="hid"></canvas><div id="scanMsg" class="info" style="text-align:center">Apunta al QR del celular del participante.</div><button class="btn s w" onclick="stopScan()">Cerrar</button>`);
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(st=>{scanStream=st;const v=document.getElementById("vid");v.srcObject=st;v.play();tick();}).catch(()=>{document.getElementById("scanMsg").textContent="No se pudo abrir la cámara (requiere HTTPS y permiso).";});}
+function tick(){const v=document.getElementById("vid"),c=document.getElementById("cvs");if(!v||!scanStream)return;if(v.readyState===v.HAVE_ENOUGH_DATA){c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext("2d");x.drawImage(v,0,0);const code=jsQR(x.getImageData(0,0,c.width,c.height).data,c.width,c.height);if(code){try{const o=JSON.parse(code.data);if(o.rit===R.id&&registrar(o.n,o.c)){if(navigator.vibrate)navigator.vibrate(80);document.getElementById("scanMsg").innerHTML=`<b style="color:var(--verde)">✓ ${esc(o.n)}</b> registrado.`;setTimeout(()=>{if(scanStream)scanRAF=requestAnimationFrame(tick);},1500);return;}}catch(e){}}}scanRAF=requestAnimationFrame(tick);}
+function stopScan(){if(scanRAF)cancelAnimationFrame(scanRAF);scanRAF=null;if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}closeModal();render();}
+const Q=new URLSearchParams(location.search);
+function vistaParticipante(){const prev=JSON.parse(LS.getItem("rit.yo")||"{}");document.getElementById("main").innerHTML=`<div class="card"><h2>Registro de asistencia</h2><div class="info">${esc(Q.get("a")||"")} · ${Q.get("f")||""}</div><label>Nombre completo</label><input id="jN" value="${esc(prev.n||"")}"><label>Cargo / empresa</label><input id="jC" value="${esc(prev.c||"")}"><button class="btn p w" onclick="const n=jN.value.trim(),c=jC.value.trim();if(!n){toast('Ingresa tu nombre');return;}LS.setItem('rit.yo',JSON.stringify({n,c}));jOut.innerHTML='<div class=info style=text-align:center>Muestra este QR al supervisor</div><div id=qq style=display:grid;place-items:center;padding:10px></div>';drawQR(document.getElementById('qq'),JSON.stringify({rit:'${esc(Q.get("join"))}',n,c}),Math.min(280,innerWidth-80))">Registrarme</button><div id="jOut"></div></div>`;}
+
+/* ========= AYUDA ========= */
+function ayuda(){openModal(`<h3>Guía RIT en 10 pasos</h3><div class="info">Herramienta preventiva que se aplica <b>antes de iniciar la actividad</b>. Diaria, máx. 30 min, dirigida por un trabajador distinto cada día. El supervisor entrega el plan del día; el superintendente verifica que se haga en todos los equipos.</div>
+ <div class="hlist"><div>¿Cada asistente está en condiciones de realizar su trabajo?</div><div>Gerencia, superintendencia y fecha.</div><div>Actividades del día, identificando las críticas.</div><div>¿Instructivos? ¿Materiales? ¿EPP?</div><div>Riesgos de fatalidad y controles por actividad.</div><div>Condiciones del entorno: clima, trabajos simultáneos, correctivas.</div><div>Coordinar interferencias del entorno.</div><div>Último día: aportes para la gestión de riesgos.</div><div>Último día: reconocer a un trabajador.</div><div>Cierre: repasar RF y controles fundamentales.</div></div>
+ <div class="info" style="margin-top:8px"><b>En la app:</b> Iniciar RIT de hoy → quién dirige → asistencia → actividades → entorno → (último día) → cierre con firmas. Listo.</div><button class="btn p w" onclick="closeModal()">Entendido</button>`);}
+
+/* ========= REPORTE ========= */
+function reporte(){
+  const cerr=DB.filter(r=>r.cerrada),tv=DB.flatMap(tvs),al=DB.flatMap(r=>alertas(r).map(a=>({a,r}))),durs=cerr.map(minutos),prom=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
+  const rfc={};DB.forEach(r=>r.acts.forEach(a=>{if(a.rf)rfc[a.rf]=(rfc[a.rf]||0)+1;}));const top=Object.entries(rfc).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const noc=DB.reduce((n,r)=>n+Object.values(r.condicion).filter(c=>c.ok===false).length,0),p=pend();
+  return `<div class="q">Reporte</div><button class="btn s sm" onclick="setView('home')" style="margin-bottom:10px">‹ Inicio</button>
+   <div class="kpis"><div class="kpi"><b>${DB.length}</b><span>RIT realizadas</span></div><div class="kpi v"><b>${cerr.length}</b><span>Cerradas</span></div><div class="kpi ${durs.some(m=>m>MAX_MIN)?"r":"t"}"><b>${prom}'</b><span>Duración promedio</span></div>
+   <div class="kpi v"><b>${tv.length}</b><span>Tarjetas Verdes</span></div><div class="kpi r"><b>${al.length}</b><span>Alertas</span></div><div class="kpi r"><b>${noc}</b><span>No en condiciones</span></div>
+   <div class="kpi n"><b>${DB.reduce((n,r)=>n+r.acts.filter(a=>a.critica).length,0)}</b><span>Actividades críticas</span></div><div class="kpi"><b>${p.length}</b><span>Aportes pendientes</span></div><div class="kpi t"><b>${new Set(DB.map(r=>r.dirige).filter(Boolean)).size}</b><span>Han dirigido</span></div></div>
+   <div class="card" style="margin-top:12px"><h2>RF más frecuentes</h2>${top.map(([k,v])=>`<div style="display:grid;grid-template-columns:48px 1fr 24px;gap:8px;align-items:center;font-size:12px;margin:6px 0"><b>${k}</b><div style="height:10px;background:#EEF1F3;border-radius:5px;overflow:hidden"><i style="display:block;height:100%;width:${v/top[0][1]*100}%;background:var(--naranjo)"></i></div>${v}</div><div style="font-size:11px;color:var(--muted);margin:-4px 0 4px 56px">${RF[k].n}</div>`).join("")||`<div class="empty">Sin datos.</div>`}</div>
+   <div class="card"><h2>Tarjetas Verdes</h2>${DB.flatMap(r=>tvs(r).map(t=>`<div class="info">🟩 <b>TV ${esc(t.num)}</b> · ${fmt(r.fecha)} · ${esc(t.act)} · ${t.item}<br>${esc(t.desc)}</div>`)).join("")||`<div class="empty">Ninguna.</div>`}</div>
+   <div class="card"><h2>Alertas</h2>${al.map(x=>`<div class="ritrow"><div class="nm">${esc(x.a)}<small>${fmt(x.r.fecha)}</small></div><button class="btn s sm" onclick="abrir('${x.r.id}')">Ver</button></div>`).join("")||`<div class="empty">Sin alertas 👏</div>`}</div>
+   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="const b=new Blob([JSON.stringify({cfg:CFG,rits:DB},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='RIT_'+today()+'.json';a.click()">Exportar JSON</button><button class="btn s sm w" onclick="window.print()">Imprimir</button></div>`;
+}
+
+document.getElementById("modal").onclick=e=>{if(e.target.id==="modal"){if(scanStream)stopScan();else closeModal();}};
+setInterval(()=>{if(view==="rit"&&R&&!R.cerrada){const t=document.getElementById("timer"),m=minutos(R);t.textContent=`⏱ ${m}/${MAX_MIN} min`;t.classList.toggle("over",m>MAX_MIN);}},1000);
+
+if(Q.get("join"))vistaParticipante();else render();
+if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
+</script>
+</body>
+</html>
