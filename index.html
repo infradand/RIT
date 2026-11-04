@@ -111,6 +111,10 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--turquesa);border
 const SUPA_URL = "https://jiaeqnjvaejnjefwxwxe.supabase.co";
 const SUPA_KEY = "sb_publishable_WXTl0q8zBljtQnZjWTw6Sg_558V0ixJ";
 const sb = (SUPA_URL && SUPA_KEY && window.supabase) ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
+/* Cuenta del repositorio: créala una vez desde la app ("Crear cuenta nueva") con este correo y la clave que quieras,
+   luego en SQL:  update perfiles set role='admin' where email='repositorio@rit-sinfra.cl';  */
+const ADMIN_EMAIL = "repositorio@rit-sinfra.cl";
+const CLAVE_LOCAL = "codelco";   // clave del repositorio en modo local / demo
 
 /* ========= CATÁLOGO RF · Línea Base RF v2 (05-10-2026) ========= */
 const RF = {
@@ -305,7 +309,7 @@ function pLogin(){
   if(!sb){
     const prev=JSON.parse(LS.getItem(KEYU)||"null");
     const yo0=JSON.parse(LS.getItem("rit.asis")||"{}");
-    main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Sin cuenta: código de la cuadrilla y tu nombre.</p><label>Código</label><input id="aC" value="${esc(yo0.codigo||Q.get("codigo")||"")}" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p big w" onclick="irAsistente()">Continuar</button></div><div class="login"><h2>¿Quién eres?</h2><p>Modo local (sin Supabase configurado): solo se registra tu nombre para las firmas y el reporte.</p>
+    main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Sin cuenta: código de la cuadrilla y tu nombre.</p><label>Código</label><input id="aC" value="${esc(yo0.codigo||Q.get("codigo")||"")}" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p big w" onclick="irAsistente()">Continuar</button></div><div class="login" style="border-top:5px solid var(--turquesa)"><h2>Entrar al repositorio</h2><p>Solo pide la clave.</p><label>Clave</label><input id="rK" type="password"><button class="btn t w" onclick="entrarRepo()">Ver repositorio y dashboard</button></div><div class="login"><h2>¿Quién eres?</h2><p>Modo local (sin Supabase configurado): solo se registra tu nombre para las firmas y el reporte.</p>
      <label>Nombre</label><input id="lN" value="${esc(prev?prev.nombre:CFG.supervisor)}"><button class="btn p w" onclick="const n=lN.value.trim();if(!n){toast('Escribe tu nombre');return;}USER={id:'local',email:'',nombre:n,role:'admin'};LS.setItem(KEYU,JSON.stringify(USER));CFG.supervisor=CFG.supervisor||n;save(false);entrar()">Entrar</button></div>`;
     return;
   }
@@ -313,12 +317,20 @@ function pLogin(){
   main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Sin cuenta. Ingresa el código de tu cuadrilla y tu nombre: quedas en la lista de asistencia.</p>
    <label>Código de cuadrilla</label><input id="aC" value="${esc(yo.codigo||Q.get("codigo")||"")}" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123">
    <button class="btn p big w" onclick="irAsistente()">Continuar</button></div>
-  <div class="login"><h2>Lidero la RIT / administración</h2><p>Con cuenta: quien crea la cuadrilla, registra la RIT del día y firma.</p>
+  <div class="login" style="border-top:5px solid var(--turquesa)"><h2>Entrar al repositorio</h2><p>Supervisión: todas las RIT y el dashboard. Solo pide la clave.</p><label>Clave</label><input id="rK" type="password" autocomplete="off"><button class="btn t w" onclick="entrarRepo()">Ver repositorio y dashboard</button><div id="rMsg" class="info hid"></div></div>
+  <div class="login"><h2>Lidero la RIT</h2><p>Con cuenta: quien crea la cuadrilla, registra la RIT del día y firma.</p>
    <label>Correo</label><input id="lE" type="email" autocomplete="username" placeholder="nombre@codelco.cl"><label>Contraseña</label><input id="lP" type="password" autocomplete="current-password">
    <button class="btn p w" onclick="login()">Entrar</button>
    <button class="btn s sm w" onclick="registro()">Crear cuenta nueva</button>
    <div id="lMsg" class="info hid"></div></div>`;
 }
+async function entrarRepo(){const k=(document.getElementById("rK").value||"").trim();if(!k){toast("Escribe la clave");return;}
+  if(!sb){if(k!==CLAVE_LOCAL){toast("Clave incorrecta");return;}USER={id:"repo",email:ADMIN_EMAIL,nombre:"Repositorio",role:"admin"};LS.setItem(KEYU,JSON.stringify(USER));view="repo";render();return;}
+  const {data,error}=await sb.auth.signInWithPassword({email:ADMIN_EMAIL,password:k});
+  if(error){const m=document.getElementById("rMsg");m.classList.remove("hid");m.textContent="Clave incorrecta o cuenta de repositorio no creada aún.";return;}
+  const md=data.user.user_metadata||{};USER={id:data.user.id,email:data.user.email,nombre:md.nombre||"Repositorio",role:"trabajador"};await pullAll();
+  if(!isAdmin()){toast("La cuenta de repositorio aún no tiene rol admin (ver SQL)");}
+  document.getElementById("who").textContent="Repositorio · admin";view=isAdmin()?"repo":"home";render();if(sb)iniciarPolling();}
 async function login(){const e=lE.value.trim(),p=lP.value;if(!e||!p){toast("Correo y contraseña");return;}const {data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){lMsg.classList.remove("hid");lMsg.textContent="No se pudo entrar: "+error.message;return;}await sesionDesde(data.user);}
 function registro(){openModal(`<h3>Crear cuenta</h3><label>Nombre y apellido</label><input id="rN" placeholder="Como aparecerá en las RIT"><label>Cargo</label><input id="rC" placeholder="Ej: Maestro techumbres"><label>Correo</label><input id="rE" type="email"><label>Contraseña (mín. 6)</label><input id="rP" type="password">
    <div class="info">Después de entrar podrás <b>crear una cuadrilla</b> o <b>unirte a una</b> con el código de quien la creó. Cualquier integrante puede registrar la RIT del día.</div>
@@ -555,7 +567,7 @@ function ayuda(){openModal(`<h3>Guía RIT en 10 pasos</h3><div class="info">Herr
 function filtrar(list){const f=REPO_F;return list.filter(r=>(!f.area||(r.area||"").toLowerCase().includes(f.area.toLowerCase()))&&(!f.sup||(r.supervisor||r.email||"").toLowerCase().includes(f.sup.toLowerCase()))&&(!f.desde||r.fecha>=f.desde)&&(!f.hasta||r.fecha<=f.hasta));}
 function repositorio(){
   const all=filtrar(DB).slice().reverse(),areas=[...new Set(DB.map(r=>r.area).filter(Boolean))],sups=[...new Set(DB.map(r=>r.supervisor||r.email).filter(Boolean))];
-  return `<div class="q">Repositorio de RIT</div><div class="row" style="margin-bottom:10px"><button class="btn s sm" onclick="setView('home')">‹ Inicio</button><button class="btn p sm" onclick="setView('rep')">📊 Dashboard</button></div>
+  return `<div class="q">Repositorio de RIT</div><div class="row" style="margin-bottom:10px"><button class="btn s sm" onclick="setView('home')">‹ Inicio</button><button class="btn p sm" onclick="setView('rep')">📊 Dashboard</button></div><div style="text-align:right;margin:-4px 0 8px"><button class="btn d" onclick="salir()">Cerrar sesión</button></div>
    <div class="card"><div class="filters"><div><label>Área</label><input list="dA" value="${esc(REPO_F.area)}" oninput="REPO_F.area=this.value;render()" placeholder="Todas"><datalist id="dA">${areas.map(a=>`<option value="${esc(a)}">`).join("")}</datalist></div><div><label>Supervisor</label><input list="dS" value="${esc(REPO_F.sup)}" oninput="REPO_F.sup=this.value;render()" placeholder="Todos"><datalist id="dS">${sups.map(a=>`<option value="${esc(a)}">`).join("")}</datalist></div>
    <div><label>Desde</label><input type="date" value="${REPO_F.desde}" oninput="REPO_F.desde=this.value;render()"></div><div><label>Hasta</label><input type="date" value="${REPO_F.hasta}" oninput="REPO_F.hasta=this.value;render()"></div></div>
    <div style="font-size:13px;color:var(--muted)">${all.length} RIT · ${new Set(all.map(r=>r.user_id||r.email)).size} supervisores · ${all.filter(r=>!r.cerrada).length} sin cerrar</div></div>
@@ -594,8 +606,8 @@ setInterval(()=>{if(!R||R.cerrada)return;const sg=segundos(R);if(view==="rit"){c
 async function arranque(){
   if(Q.get("codigo")){ASIS=Object.assign(ASIS||{},{codigo:Q.get("codigo").toUpperCase()});LS.setItem("rit.asis",JSON.stringify(ASIS));view="asis";render();cargarAsis();return;}
   if(ASIS&&ASIS.codigo&&!(sb&&(await sb.auth.getSession()).data.session)&&!LS.getItem(KEYU)){view="asis";render();cargarAsis();return;}
-  if(sb){const {data}=await sb.auth.getSession();if(data.session){await sesionDesde(data.session.user);return;}view="login";render();return;}
-  const u=JSON.parse(LS.getItem(KEYU)||"null");if(u){USER=u;entrar();}else{view="login";render();}
+  if(sb){const {data}=await sb.auth.getSession();if(data.session){await sesionDesde(data.session.user);if(data.session.user.email===ADMIN_EMAIL&&isAdmin()){view="repo";render();}return;}view="login";render();return;}
+  const u=JSON.parse(LS.getItem(KEYU)||"null");if(u){USER=u;entrar();if(u.id==="repo"){view="repo";render();}}else{view="login";render();}
 }
 arranque();
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
