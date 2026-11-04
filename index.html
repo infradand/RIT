@@ -79,12 +79,21 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--turquesa);border
 .toggle .sw{width:44px;height:26px;border-radius:13px;background:#CFD4D8;position:relative;flex:none}.toggle .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}.toggle.on .sw{background:var(--dorado)}.toggle.on .sw::after{left:21px}
 .toggle span{flex:1;font-size:14px;line-height:1.3}
 @media print{header,.foot,.noprint{display:none!important}body{background:#fff;padding:0;font-size:11px}.card{box-shadow:none;border:1px solid #999;break-inside:avoid}}
+
+.login{max-width:420px;margin:30px auto;background:#fff;border-radius:16px;padding:22px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.login h2{margin:0 0 4px;font-size:20px;color:var(--pizarra)}.login p{margin:0 0 12px;font-size:13px;color:var(--muted)}
+.clock{font-variant-numeric:tabular-nums;font-size:34px;font-weight:800;letter-spacing:.02em}
+.clock.over{color:var(--rojo)}
+.rfslot{border:1.5px solid #FFD9C2;background:#FFFAF6;border-radius:10px;padding:10px;margin-top:8px}.rfslot.empty{background:#fff;border-style:dashed}
+.who{font-size:12px;color:rgba(255,255,255,.8);white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.userchip{display:inline-block;background:#E5F6F8;color:var(--turquesa);border-radius:99px;padding:2px 8px;font-size:11px;font-weight:700}
 </style>
 </head>
 <body>
 <header>
   <div class="brand"></div>
-  <div class="hbar"><div class="logo">RIT</div><h1>Reunión de Inicio de Turno<small>GCSSO · Codelco</small></h1><div id="timer" class="hid"></div><button class="help" onclick="ayuda()">?</button></div>
+  <div class="hbar"><div class="logo">RIT</div><h1>RIT<small>Reunión de Inicio de Turno</small></h1><div id="timer" class="hid"></div><span class="who" id="who"></span><button class="help" onclick="ayuda()">?</button></div>
   <div class="prog hid" id="prog"><span id="progT"></span><div class="bar"><i id="progB"></i></div></div>
 </header>
 <main id="main"></main>
@@ -94,7 +103,17 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--turquesa);border
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
+/* =====================================================================
+   CONFIGURACIÓN · Supabase (inicio de sesión, repositorio y dashboard)
+   1) Crea un proyecto en supabase.com  2) Ejecuta el SQL del README
+   3) Pega aquí la URL y la anon key.  Vacío = modo local (sin cuentas).
+   ===================================================================== */
+const SUPA_URL = "";
+const SUPA_KEY = "";
+const sb = (SUPA_URL && SUPA_KEY && window.supabase) ? window.supabase.createClient(SUPA_URL, SUPA_KEY) : null;
+
 /* ========= CATÁLOGO RF · Línea Base RF v2 (05-10-2026) ========= */
 const RF = {
 RF01:{n:"Energía eléctrica",ev:"Interacción con energía eléctrica",en:"Eléctrica",c:[["CCP1","Personal acreditado para trabajos eléctricos"],["CCP2","Acceso restringido a equipos e instalaciones eléctricas"],["CCP3","Equipos y herramientas eléctricas verificadas"],["CCP4","Intervención de equipos en condición eléctricamente segura"],["CCM1","Selección y uso de EPP específico para la actividad"],["CCM2","Protecciones eléctricas en sistemas de alta y media tensión"],["CCM3","Capacidad de respuesta ante emergencia"]]},
@@ -131,34 +150,115 @@ RF31:{n:"Incendio de equipos mineros e industriales",ev:"Pérdida de control de 
 };
 const PREP=[["Instructivos","¿Están los instructivos?"],["Materiales","¿Están los materiales?"],["Herramientas","¿Herramientas en buenas condiciones?"],["EPP","¿Se dispone de los EPP?"]];
 const ENTORNO=[["clima","☁️ Condiciones climáticas"],["simultaneos","🔀 Trabajos en simultáneo / contiguos"],["correctivas","🔧 Mantenciones correctivas"],["otros","⚠️ Otra condición"]];
-const MIN_ACTS=3, MAX_MIN=30;
+const TURNOS=["A","C"], MIN_ACTS=3, RF_POR_ACT=3, MAX_MIN=30;
 
-/* ========= ALMACENAMIENTO ========= */
+/* ========= UTILIDADES ========= */
 const LS=(()=>{try{localStorage.setItem("__t","1");localStorage.removeItem("__t");return localStorage;}catch(e){const m={};return{getItem:k=>k in m?m[k]:null,setItem:(k,v)=>{m[k]=String(v);},removeItem:k=>{delete m[k];}};}})();
-const KEY="rit6.rits", KEYC="rit6.cfg";
-const today=()=>new Date().toISOString().slice(0,10), uid=()=>Math.random().toString(36).slice(2,9), hora=()=>new Date().toTimeString().slice(0,5);
+const today=()=>new Date().toISOString().slice(0,10), uid=()=>Math.random().toString(36).slice(2,9), hora=()=>new Date().toTimeString().slice(0,5), ahora=()=>new Date().toISOString();
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmt=f=>new Date(f+"T12:00:00").toLocaleDateString("es-CL",{weekday:"long",day:"numeric",month:"long"});
+const fmtS=f=>new Date(f+"T12:00:00").toLocaleDateString("es-CL",{day:"2-digit",month:"2-digit"});
 const ini=n=>n.split(" ").map(x=>x[0]).join("").slice(0,2).toUpperCase();
-function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1700);}
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
+function openModal(h){document.getElementById("modalBox").innerHTML=h;document.getElementById("modal").classList.add("open");}
+function closeModal(){document.getElementById("modal").classList.remove("open");}
+
+/* ========= SESIÓN ========= */
+let USER=null;                      // {id,email,nombre,role}
+const isAdmin=()=>USER&&USER.role==="admin";
+const isTrab=()=>USER&&USER.role==="trabajador";
+const mine=r=>!USER||!r.user_id||r.user_id===USER.id||(isTrab()&&(r.cuadrilla||[]).some(p=>p.uid===USER.id));
+const ROLES={trabajador:"Trabajador",supervisor:"Supervisor / líder de cuadrilla",admin:"Administración"};
+const genCodigo=()=>Math.random().toString(36).slice(2,8).toUpperCase();
+
+/* ========= DATOS ========= */
+const KEY="rit8.rits", KEYC="rit8.cfg", KEYU="rit8.user";
 let DB=JSON.parse(LS.getItem(KEY)||"[]");
-let CFG=Object.assign({centro:"",gerencia:"",sup:"",area:"",supervisor:"",turno:"Día",cuadrilla:[]},JSON.parse(LS.getItem(KEYC)||"{}"));
-const save=()=>{LS.setItem(KEY,JSON.stringify(DB));LS.setItem(KEYC,JSON.stringify(CFG));};
-let R=null, step=0, view="home";
-const minutos=d=>{if(!d.inicioHora)return 0;const [a,b]=d.inicioHora.split(":").map(Number);const [c,e]=(d.finHora||hora()).split(":").map(Number);return Math.max(0,c*60+e-(a*60+b));};
-const pend=()=>{const p=[];DB.filter(r=>r.cerrada).forEach(r=>r.aportes.forEach(a=>{if(a.prop&&a.estado!=="cumplido")p.push({...a,ritId:r.id,fecha0:r.fecha});}));return p;};
-function nuevaRIT(){
-  return {id:uid(),fecha:today(),inicioHora:hora(),finHora:"",dirige:"",ultimo:false,asistentes:[],condicion:{},
-    acts:Array.from({length:MIN_ACTS},()=>({id:uid(),nombre:"",critica:false,prep:{},tv:{},rf:"",cons:"",ctl:[]})),
-    entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:""};
+let CFG=Object.assign({gerencia:"",sup:"",area:"",supervisor:"",turno:"A",cuadrilla:[],codigo:"",cargo:"",supervisor_id:"",supervisor_nombre:""},JSON.parse(LS.getItem(KEYC)||"{}"));
+let R=null, step=0, view="home", REPO_F={area:"",sup:"",desde:"",hasta:""};
+function save(sync=true){LS.setItem(KEY,JSON.stringify(DB));LS.setItem(KEYC,JSON.stringify(CFG));if(sync&&R)syncRIT(R);if(sync)syncCfg();}
+const segundos=d=>{if(!d.inicioTs)return 0;const fin=d.finTs?new Date(d.finTs):new Date();return Math.max(0,Math.floor((fin-new Date(d.inicioTs))/1000));};
+const minutos=d=>Math.round(segundos(d)/60);
+const mmss=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+const pend=()=>{const p=[];DB.filter(r=>r.cerrada&&mine(r)).forEach(r=>r.aportes.forEach(a=>{if(a.prop&&a.estado!=="cumplido")p.push({...a,ritId:r.id,fecha0:r.fecha});}));return p;};
+const nuevaAct=()=>({id:uid(),nombre:"",critica:false,prep:{},tv:{},rfs:Array.from({length:RF_POR_ACT},()=>({rf:"",cons:"",ctl:[]}))});
+function nuevaRIT(){return {id:uid(),user_id:USER?USER.id:null,email:USER?USER.email:"",supervisor:CFG.supervisor,area:CFG.area,gerencia:CFG.gerencia,sup:CFG.sup,turno:CFG.turno,fecha:today(),inicioTs:ahora(),finTs:null,dirige:"",ultimo:false,asistentes:[],condicion:{},cuadrilla:CFG.cuadrilla.map(p=>({...p})),cuadrilla_ids:CFG.cuadrilla.map(p=>p.uid).filter(Boolean),acts:Array.from({length:MIN_ACTS},nuevaAct),entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:"",updated_at:ahora()};}
+/* migración de RIT antiguas (v6: a.rf) */
+DB.forEach(r=>{r.acts.forEach(a=>{if(!a.rfs){a.rfs=[{rf:a.rf||"",cons:a.cons||"",ctl:a.ctl||[]}];}while(a.rfs.length<RF_POR_ACT)a.rfs.push({rf:"",cons:"",ctl:[]});});if(!r.inicioTs&&r.inicioHora)r.inicioTs=r.fecha+"T"+r.inicioHora+":00";if(!r.finTs&&r.finHora)r.finTs=r.fecha+"T"+r.finHora+":00";if(!r.cuadrilla)r.cuadrilla=CFG.cuadrilla;});
+const cuad=()=>R&&R.cuadrilla?R.cuadrilla:CFG.cuadrilla;
+
+/* ========= SINCRONIZACIÓN SUPABASE ========= */
+async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(isTrab())return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error)console.warn("sync",error.message);}
+async function syncCfg(){if(!sb||!USER)return;await sb.from("perfiles").update({cfg:CFG,nombre:USER.nombre,cargo:CFG.cargo||null,codigo:CFG.codigo||null,supervisor_id:CFG.supervisor_id||null,updated_at:ahora()}).eq("id",USER.id);}
+async function pullAll(){
+  if(!sb||!USER)return;
+  const {data:perfil}=await sb.from("perfiles").select("*").eq("id",USER.id).maybeSingle();
+  if(perfil){USER.role=perfil.role||USER.role||"trabajador";USER.nombre=perfil.nombre||USER.nombre;if(perfil.cfg)CFG=Object.assign(CFG,perfil.cfg);CFG.codigo=perfil.codigo||CFG.codigo;CFG.supervisor_id=perfil.supervisor_id||CFG.supervisor_id;CFG.cargo=perfil.cargo||CFG.cargo;}
+  else{if(USER.role==="supervisor"&&!CFG.codigo)CFG.codigo=genCodigo();await sb.from("perfiles").insert({id:USER.id,email:USER.email,nombre:USER.nombre,role:USER.role||"trabajador",cfg:CFG,codigo:CFG.codigo||null,cargo:CFG.cargo||null});}
+  if(USER.role==="supervisor"){ if(!CFG.codigo){CFG.codigo=genCodigo();syncCfg();}
+    const {data:tr}=await sb.from("perfiles").select("id,nombre,cargo,email").eq("supervisor_id",USER.id);
+    (tr||[]).forEach(t=>{let p=CFG.cuadrilla.find(x=>x.uid===t.id);if(!p){p=CFG.cuadrilla.find(x=>!x.uid&&x.nombre.toLowerCase()===(t.nombre||"").toLowerCase());if(p)p.uid=t.id;else CFG.cuadrilla.push({id:uid(),uid:t.id,nombre:t.nombre||t.email,cargo:t.cargo||""});}else{p.nombre=t.nombre||p.nombre;p.cargo=t.cargo||p.cargo;}});
+  }
+  if(isTrab()&&CFG.supervisor_id){const {data:sup}=await sb.from("perfiles").select("nombre,cfg").eq("id",CFG.supervisor_id).maybeSingle();if(sup){CFG.supervisor_nombre=sup.nombre;CFG.area=(sup.cfg&&sup.cfg.area)||CFG.area;}}
+  const {data:rows,error}=await sb.from("rits").select("id,user_id,email,data,updated_at").order("updated_at",{ascending:false}).limit(2000);
+  if(error){toast("Sin conexión: trabajando con datos locales");return;}
+  const map=new Map(isTrab()?[]:DB.map(r=>[r.id,r]));
+  rows.forEach(x=>{const r=x.data;r.user_id=x.user_id;r.email=x.email;const loc=map.get(r.id);if(!loc||(x.updated_at>(loc.updated_at||"")))map.set(r.id,r);});
+  DB=[...map.values()].sort((a,b)=>(a.inicioTs||"").localeCompare(b.inicioTs||""));
+  if(!isTrab())DB.filter(r=>mine(r)&&!rows.find(x=>x.id===r.id)).forEach(r=>syncRIT(r));
+  save(false);
 }
-const STEPS=()=>R&&R.ultimo?["dirige","asist","acts","entorno","ultimo","cierre"]:["dirige","asist","acts","entorno","cierre"];
-const GUIA={dirige:"La reunión se hace <b>cada día</b> al inicio de la jornada, dura máximo <b>30 min</b> y la dirige un trabajador <b>distinto cada día</b>.",
- asist:"<b>Paso 1 de la guía:</b> pregunta a cada asistente si está en condiciones de realizar su trabajo.",
- acts:"<b>Pasos 3 a 5:</b> escribe las actividades del día, marca las críticas, revisa instructivos / materiales / herramientas / EPP, y por cada una define el riesgo de fatalidad y sus controles.",
- entorno:"<b>Paso 6:</b> ¿qué condiciones del entorno podrían afectar la ejecución? Clima, trabajos en simultáneo, mantenciones correctivas.",
- ultimo:"<b>Pasos 8 y 9 (último día del turno):</b> pide aportes para la gestión de riesgos y designen a un trabajador para ser reconocido.",
- cierre:"<b>Paso 10:</b> para cerrar, repasen los riesgos de fatalidad y sus controles. Luego firman quien dirigió y el supervisor."};
+
+async function refrescarRIT(id){
+  if(!sb||!USER)return false;const {data}=await sb.from("rits").select("data,updated_at,user_id,email").eq("id",id).maybeSingle();if(!data)return false;
+  const r=data.data;r.user_id=data.user_id;r.email=data.email;const i=DB.findIndex(x=>x.id===id);
+  if(i<0){DB.push(r);}else{if((DB[i].updated_at||"")>=data.updated_at)return false;DB[i]=r;}
+  if(R&&R.id===id)R=DB.find(x=>x.id===id);save(false);return true;
+}
+/* acciones del trabajador: pasan por RPC (actualizan la RIT del supervisor) */
+async function rpcTrab(fn,args){
+  if(sb){const {data,error}=await sb.rpc(fn,args);if(error){toast("No se pudo enviar: "+error.message);return false;}return true;}
+  return true; // modo local: se aplica directo abajo
+}
+async function marcarMiAsistencia(ok,motivo){
+  const r=ritDeHoyTrab();if(!r)return;const p=(r.cuadrilla||[]).find(x=>x.uid===USER.id);if(!p){toast("No estás en la cuadrilla de esta RIT");return;}
+  if(!r.asistentes.includes(p.id))r.asistentes.push(p.id);r.condicion[p.id]={ok,motivo:motivo||"",self:true,ts:ahora()};
+  if(sb){await rpcTrab("rit_marcar_asistencia",{p_rit:r.id,p_ok:ok,p_motivo:motivo||""});await refrescarRIT(r.id);}else{r.updated_at=ahora();save(false);}
+  render();toast(ok?"Asistencia registrada ✓":"Registrado: no en condiciones");
+}
+async function confirmarControl(aid,j,c){
+  const r=ritDeHoyTrab();if(!r)return;const a=r.acts.find(x=>x.id===aid);const k=a.rfs[j].ctl.find(x=>x.c===c);if(!k)return;
+  k.confirmado=!k.confirmado;k.confirmadoTs=k.confirmado?ahora():null;
+  if(sb){await rpcTrab("rit_confirmar_control",{p_rit:r.id,p_act:aid,p_j:j,p_c:c,p_valor:k.confirmado});await refrescarRIT(r.id);}else{r.updated_at=ahora();save(false);}
+  render();
+}
+const ritDeHoyTrab=()=>DB.filter(r=>r.fecha===today()&&(r.cuadrilla||[]).some(p=>p.uid===USER.id)).sort((a,b)=>(b.inicioTs||"").localeCompare(a.inicioTs||""))[0];
+
+/* ========= LOGIN ========= */
+function pLogin(){
+  const main=document.getElementById("main");
+  if(!sb){
+    const prev=JSON.parse(LS.getItem(KEYU)||"null");
+    main.innerHTML=`<div class="login"><h2>¿Quién eres?</h2><p>Modo local (sin Supabase configurado): solo se registra tu nombre para las firmas y el reporte.</p>
+     <label>Nombre</label><input id="lN" value="${esc(prev?prev.nombre:CFG.supervisor)}"><button class="btn p w" onclick="const n=lN.value.trim();if(!n){toast('Escribe tu nombre');return;}USER={id:'local',email:'',nombre:n,role:'admin'};LS.setItem(KEYU,JSON.stringify(USER));CFG.supervisor=CFG.supervisor||n;save(false);entrar()">Entrar</button></div>`;
+    return;
+  }
+  main.innerHTML=`<div class="login"><h2>Iniciar sesión</h2><p>Usa tu correo. Cada supervisor ve sus propias RIT; la administración ve el repositorio completo.</p>
+   <label>Correo</label><input id="lE" type="email" autocomplete="username" placeholder="nombre@codelco.cl"><label>Contraseña</label><input id="lP" type="password" autocomplete="current-password">
+   <button class="btn p w" onclick="login()">Entrar</button>
+   <button class="btn s sm w" onclick="registro()">Crear cuenta nueva</button>
+   <div id="lMsg" class="info hid"></div></div>`;
+}
+async function login(){const e=lE.value.trim(),p=lP.value;if(!e||!p){toast("Correo y contraseña");return;}const {data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){lMsg.classList.remove("hid");lMsg.textContent="No se pudo entrar: "+error.message;return;}await sesionDesde(data.user);}
+function registro(){openModal(`<h3>Crear cuenta</h3><label>Nombre y apellido</label><input id="rN" placeholder="Como aparecerá en las RIT"><label>Cargo</label><input id="rC" placeholder="Ej: Maestro techumbres"><label>Correo</label><input id="rE" type="email"><label>Contraseña (mín. 6)</label><input id="rP" type="password">
+   <label>¿Cuál es tu rol?</label><div class="persona sel" id="rolT" onclick="selRol('trabajador')"><div class="av">👷</div><div class="nm">Trabajador<small>Marco mi asistencia y confirmo mis controles</small></div></div><div class="persona" id="rolS" onclick="selRol('supervisor')"><div class="av">🧭</div><div class="nm">Supervisor / líder de cuadrilla<small>Dirijo la RIT de mi cuadrilla</small></div></div>
+   <button class="btn p w" onclick="crearCuenta()">Crear cuenta</button><button class="btn s sm w" onclick="closeModal()">Cancelar</button>`);}
+let ROL_NUEVO="trabajador";function selRol(r){ROL_NUEVO=r;rolT.classList.toggle("sel",r==="trabajador");rolS.classList.toggle("sel",r==="supervisor");}
+async function crearCuenta(){const n=rN.value.trim(),c=rC.value.trim(),e=rE.value.trim(),p=rP.value;if(!n||!e||p.length<6){toast("Completa los datos");return;}const {data,error}=await sb.auth.signUp({email:e,password:p,options:{data:{nombre:n,cargo:c,role:ROL_NUEVO}}});if(error){toast(error.message);return;}closeModal();if(data.session){await sesionDesde(data.user);}else{toast("Revisa tu correo para confirmar la cuenta");}}
+async function sesionDesde(u){const md=u.user_metadata||{};USER={id:u.id,email:u.email,nombre:md.nombre||u.email.split("@")[0],role:md.role||"trabajador"};if(md.cargo&&!CFG.cargo)CFG.cargo=md.cargo;if(USER.role==="supervisor"&&!CFG.supervisor)CFG.supervisor=USER.nombre;await pullAll();entrar();}
+async function salir(){if(sb)await sb.auth.signOut();USER=null;LS.removeItem(KEYU);R=null;view="login";render();}
+function entrar(){view="home";render();if(sb)iniciarPolling();}
+let pollT=null;function iniciarPolling(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{const r=isTrab()?ritDeHoyTrab():(R&&!R.cerrada?R:null);if(!r)return;if(await refrescarRIT(r.id)){if(view==="home"||view==="rit")render();}},8000);}
 
 /* ========= RENDER ========= */
 function render(){
@@ -166,182 +266,200 @@ function render(){
   document.getElementById("foot").classList.toggle("hid",!enRit);
   document.getElementById("prog").classList.toggle("hid",!enRit);
   const tm=document.getElementById("timer");tm.classList.toggle("hid",!(enRit&&!R.cerrada));
-  if(enRit&&!R.cerrada){const m=minutos(R);tm.textContent=`⏱ ${m}/${MAX_MIN} min`;tm.classList.toggle("over",m>MAX_MIN);}
+  if(enRit&&!R.cerrada){const sg=segundos(R);tm.textContent=`⏱ ${mmss(sg)}`;tm.classList.toggle("over",sg>MAX_MIN*60);}
+  document.getElementById("who").textContent=USER?USER.nombre.split(" ")[0]+(isAdmin()?" · admin":isTrab()?"":" · sup"):"";
   const main=document.getElementById("main");
-  if(view==="home"){main.innerHTML=home();return;}
+  if(view==="login"){pLogin();return;}
+  if(view==="home"){main.innerHTML=isTrab()?homeTrab():home();return;}
+  if(view==="resumen"){main.innerHTML=pResumen();return;}
+  if(view==="repo"){main.innerHTML=repositorio();return;}
   if(view==="rep"){main.innerHTML=reporte();return;}
-  const S=STEPS(), k=S[step];
-  document.getElementById("progT").textContent=`Paso ${step+1} de ${S.length}`;
-  document.getElementById("progB").style.width=((step+1)/S.length*100)+"%";
+  const S=STEPS(),k=S[step];
+  document.getElementById("progT").textContent=`Paso ${step+1} de ${S.length}`;document.getElementById("progB").style.width=((step+1)/S.length*100)+"%";
   document.getElementById("bPrev").textContent=step===0?"Inicio":"Atrás";
   const bn=document.getElementById("bNext");
-  if(k==="cierre"){bn.textContent=R.cerrada?"Volver al inicio":"✓ Cerrar RIT";bn.className=R.cerrada?"btn s":"btn t";}
-  else{bn.textContent="Siguiente";bn.className="btn p";}
+  if(k==="cierre"){bn.textContent=R.cerrada?"Volver al inicio":"✓ Cerrar RIT";bn.className=R.cerrada?"btn s":"btn t";}else{bn.textContent="Siguiente";bn.className="btn p";}
   main.innerHTML=`<div class="guia">${GUIA[k]}</div>`+({dirige:pDirige,asist:pAsist,acts:pActs,entorno:pEntorno,ultimo:pUltimo,cierre:pCierre})[k]();
   const qb=document.getElementById("qrBox");if(qb)drawQR(qb,joinURL(),170);
 }
 function setView(v){view=v;render();window.scrollTo(0,0);}
+const STEPS=()=>R&&R.ultimo?["dirige","asist","acts","entorno","ultimo","cierre"]:["dirige","asist","acts","entorno","cierre"];
+const GUIA={dirige:"La reunión se hace <b>cada día</b> al inicio de la jornada, dura máximo <b>30 min</b> y la dirige un trabajador <b>distinto cada día</b>.",
+ asist:"<b>Paso 1 de la guía:</b> pregunta a cada asistente si está en condiciones de realizar su trabajo.",
+ acts:"<b>Pasos 3 a 5:</b> escribe las actividades del día, marca las críticas, revisa instructivos / materiales / herramientas / EPP, y por cada una define hasta 3 riesgos de fatalidad con sus controles.",
+ entorno:"<b>Paso 6:</b> ¿qué condiciones del entorno podrían afectar la ejecución? Clima, trabajos en simultáneo, mantenciones correctivas.",
+ ultimo:"<b>Pasos 8 y 9 (último día del turno):</b> pide aportes para la gestión de riesgos y designen a un trabajador para ser reconocido.",
+ cierre:"<b>Paso 10:</b> para cerrar, repasen los riesgos de fatalidad y sus controles. Luego firman quien dirigió y el supervisor."};
 function go(d){
   const S=STEPS();
   if(step===0&&d<0){setView("home");return;}
   if(S[step]==="cierre"&&d>0){if(R.cerrada)setView("home");else cerrar();return;}
-  if(d>0&&!validar(S[step]))return;
+  if(d>0&&S[step]==="dirige"&&!R.dirige){toast("Elige quién dirige hoy");return;}
+  if(d>0&&S[step]==="asist"&&!R.asistentes.length){toast("Marca al menos un asistente");return;}
   step=Math.max(0,Math.min(S.length-1,step+d));render();window.scrollTo(0,0);
 }
-function validar(k){
-  if(k==="dirige"&&!R.dirige){toast("Elige quién dirige hoy");return false;}
-  if(k==="asist"&&!R.asistentes.length){toast("Marca al menos un asistente");return false;}
-  return true;
-}
-function abrir(id){R=DB.find(r=>r.id===id);step=R.cerrada?STEPS().length-1:0;setView("rit");}
+function abrir(id){R=DB.find(r=>r.id===id);if(R.cerrada){setView("resumen");}else{step=0;setView("rit");}}
+function detalles(){step=STEPS().length-1;setView("rit");}
 function iniciarHoy(){
-  let r=DB.find(x=>x.fecha===today()&&!x.cerrada);
-  if(!r){ if(!CFG.cuadrilla.length){modalCuadrilla(true);return;} r=nuevaRIT(); const hechos=DB.slice(-6).map(x=>x.dirige); r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||""; DB.push(r); save(); }
-  R=r; step=0; setView("rit");
+  let r=DB.find(x=>x.fecha===today()&&!x.cerrada&&mine(x));
+  if(!r){if(!CFG.cuadrilla.length){modalCuadrilla(true);return;}r=nuevaRIT();const hechos=DB.filter(mine).slice(-6).map(x=>x.dirige);r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||"";DB.push(r);R=r;save();}
+  R=r;step=0;setView("rit");
 }
 
 /* ========= INICIO ========= */
 function home(){
-  const hoy=DB.find(x=>x.fecha===today()), pasadas=[...DB].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30), p=pend();
+  const mias=DB.filter(mine),hoy=mias.find(x=>x.fecha===today()),pasadas=[...mias].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30),p=pend();
   return `<div class="hoy"><h2>HOY</h2><div class="f">${fmt(today())}</div>
-   ${!CFG.cuadrilla.length?`<p>Primero arma tu cuadrilla y datos del área (un minuto, una sola vez).</p><button class="btn p big w" onclick="modalCuadrilla(true)">Configurar cuadrilla</button>`:
-     hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada a las ${hoy.finHora} · ${minutos(hoy)} min · dirigió ${esc(hoy.dirige)}</p><button class="btn s w" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button>`:`<p>RIT de hoy en curso · dirige ${esc(hoy.dirige)||"—"} · ${hoy.asistentes.length} presentes</p><button class="btn p big w" onclick="iniciarHoy()">▶ Continuar RIT de hoy</button>`):
-     `<p>${esc(CFG.area||"Área sin definir")} · ${CFG.cuadrilla.length} en cuadrilla · supervisor ${esc(CFG.supervisor||"—")}</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy</button>`}
-   <div class="row" style="margin-top:10px"><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalCuadrilla()">👥 Cuadrilla y datos</button><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="setView('rep')">📊 Reporte</button></div></div>
+   ${!CFG.cuadrilla.length?`<p>Primero arma tu cuadrilla y datos del área (una sola vez).</p><button class="btn p big w" onclick="modalCuadrilla(true)">Configurar cuadrilla</button>`:
+     hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada · ${mmss(segundos(hoy))} · dirigió ${esc(hoy.dirige)}</p><button class="btn s w" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button>`:
+       `<div class="clock ${segundos(hoy)>MAX_MIN*60?"over":""}" id="homeClock">⏱ ${mmss(segundos(hoy))}</div><p>RIT en curso · dirige ${esc(hoy.dirige)||"—"} · ${hoy.asistentes.length} presentes</p><button class="btn p big w" onclick="iniciarHoy()">▶ Continuar RIT de hoy</button>`):
+     `<p>${esc(CFG.area||"Área sin definir")} · turno ${esc(CFG.turno)} · ${CFG.cuadrilla.length} en cuadrilla · ${esc(CFG.supervisor||"—")}</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy</button>`}
+   ${USER.role==="supervisor"&&CFG.codigo?`<p style="margin-top:6px">Código de tu cuadrilla: <b style="font-size:18px;letter-spacing:.1em;color:var(--dorado)">${CFG.codigo}</b> <span style="opacity:.7">· tus trabajadores lo ingresan en su app</span></p>`:""}
+   <div class="row" style="margin-top:10px"><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalCuadrilla()">👥 Cuadrilla y datos</button>${isAdmin()?`<button class="btn s sm" style="background:var(--dorado);color:var(--pizarra);border:none" onclick="setView('repo')">🗂 Repositorio · Dashboard</button>`:`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="setView('rep')">📊 Mi reporte</button>`}</div>
+   <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="salir()">Cerrar sesión</button></div></div>
   ${p.length?`<div class="card"><h2>Aportes pendientes del turno anterior <span class="tag no">${p.length}</span></h2>${p.map(a=>`<div class="ritrow"><div class="nm">${esc(a.prop)}<small>${esc(a.resp)} · compromiso ${a.fecha||"s/f"}</small></div><button class="btn t sm" onclick="cumplir('${a.ritId}','${esc(a.prop)}')">Cumplido</button></div>`).join("")}</div>`:""}
-  <div class="card"><h2>RIT anteriores</h2>${pasadas.map(x=>`<div class="ritrow" onclick="abrir('${x.id}')" style="cursor:pointer"><div class="nm"><b>${fmt(x.fecha)}</b>${x.ultimo?' <span class="tag" style="background:#FDF1D7;color:#8A5E00">último día</span>':""}<small>${x.cerrada?"✓ cerrada · "+minutos(x)+" min":"⚠️ sin cerrar"} · dirigió ${esc(x.dirige)||"—"} · ${x.asistentes.length} asist. · ${[...new Set(x.acts.map(a=>a.rf).filter(Boolean))].join(" ")||"sin RF"}${tvs(x).length?" · 🟩 "+tvs(x).length+" TV":""}</small></div><span style="color:var(--muted)">›</span></div>`).join("")||`<div class="empty">Aquí irán apareciendo las RIT de cada día.</div>`}</div>`;
+  <div class="card"><h2>Mis RIT anteriores</h2>${pasadas.map(filaRIT).join("")||`<div class="empty">Aquí irán apareciendo las RIT de cada día.</div>`}</div>`;
 }
-function cumplir(ritId,prop){const r=DB.find(x=>x.id===ritId);const a=r.aportes.find(x=>x.prop===prop);if(a)a.estado="cumplido";save();render();toast("Aporte cumplido");}
+function filaRIT(x,conUser){return `<div class="ritrow" onclick="abrir('${x.id}')" style="cursor:pointer"><div class="nm"><b>${fmt(x.fecha)}</b> <span class="tag">Turno ${esc(x.turno||"")}</span>${x.ultimo?' <span class="tag" style="background:#FDF1D7;color:#8A5E00">último día</span>':""}${conUser?` <span class="userchip">${esc(x.supervisor||x.email||"")}</span>`:""}<small>${x.cerrada?"✓ cerrada · "+mmss(segundos(x)):"⚠️ sin cerrar"} · dirigió ${esc(x.dirige)||"—"} · ${x.asistentes.length} asist. · ${rfsDe(x).join(" ")||"sin RF"}${tvs(x).length?" · 🟩 "+tvs(x).length+" TV":""}${conUser?" · "+esc(x.area||""):""}</small></div><span style="color:var(--muted)">›</span></div>`;}
+const rfsDe=r=>[...new Set(r.acts.flatMap(a=>a.rfs.map(s=>s.rf)).filter(Boolean))];
+function cumplir(ritId,prop){const r=DB.find(x=>x.id===ritId);const a=r.aportes.find(x=>x.prop===prop);if(a)a.estado="cumplido";syncRIT(r);save(false);render();toast("Aporte cumplido");}
 const tvs=r=>{const t=[];r.acts.forEach(a=>Object.entries(a.tv||{}).forEach(([k,v])=>t.push({act:a.nombre,item:k,...v})));return t;};
-function alertas(r){const al=[];r.acts.forEach(a=>{PREP.forEach(([p])=>{if(a.prep[p]===false)al.push(`${a.nombre||"Actividad"}: ${p} NO · TV ${a.tv[p]?.num||"s/n"}`);});a.ctl.forEach(c=>{if(!c.enc)al.push(`${a.rf}-${c.c} sin encargado`);});});
-  Object.entries(r.condicion).forEach(([id,c])=>{if(c.ok===false){const p=CFG.cuadrilla.find(x=>x.id===id);al.push(`${p?p.nombre:"Trabajador"} no en condiciones`);}});
-  if(r.finHora&&minutos(r)>MAX_MIN)al.push(`Reunión de ${minutos(r)} min (máx. ${MAX_MIN})`);return al;}
+function alertas(r){const al=[];r.acts.forEach(a=>{PREP.forEach(([p])=>{if(a.prep[p]===false)al.push(`${a.nombre||"Actividad"}: ${p} NO · TV ${a.tv[p]?.num||"s/n"}`);});a.rfs.forEach(s=>s.ctl.forEach(c=>{if(!c.enc)al.push(`${s.rf}-${c.c} sin encargado`);}));});
+  Object.entries(r.condicion).forEach(([id,c])=>{if(c.ok===false){const p=(r.cuadrilla||[]).find(x=>x.id===id);al.push(`${p?p.nombre:"Trabajador"} no en condiciones`);}});
+  if(r.finTs&&segundos(r)>MAX_MIN*60)al.push(`Reunión de ${minutos(r)} min (máx. ${MAX_MIN})`);return al;}
+
+/* ========= VISTA TRABAJADOR ========= */
+function homeTrab(){
+  const r=ritDeHoyTrab(), p=r?(r.cuadrilla||[]).find(x=>x.uid===USER.id):null, c=r&&p?r.condicion[p.id]:null, pres=r&&p&&r.asistentes.includes(p.id);
+  const mias=DB.filter(x=>(x.cuadrilla||[]).some(q=>q.uid===USER.id)).slice().reverse();
+  const misCtl=r?r.acts.flatMap(a=>a.rfs.flatMap((s,j)=>s.ctl.filter(k=>k.enc===USER.nombre).map(k=>({a,s,j,k})))):[];
+  return `<div class="hoy"><h2>HOY</h2><div class="f">${fmt(today())}</div>
+   ${!CFG.supervisor_id&&!(CFG.cuadrilla||[]).length&&!r?`<p>Para empezar, ingresa el código que te dio tu supervisor.</p><button class="btn p big w" onclick="modalUnirse()">Unirme a mi cuadrilla</button>`:
+     !r?`<p>Cuadrilla de ${esc(CFG.supervisor_nombre||"tu supervisor")} · ${esc(CFG.area||"")}<br>Tu supervisor aún no inicia la RIT de hoy.</p><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="pullAll().then(render)">Actualizar</button>`:
+     !pres?`<p>RIT en curso · dirige ${esc(r.dirige)||"—"} · supervisor ${esc(r.supervisor)}</p><div class="q" style="color:#fff;font-size:18px">¿Estás en condiciones de realizar tu trabajo?</div><div class="row"><button class="btn big" style="background:var(--verde);color:#fff" onclick="marcarMiAsistencia(true)">✓ Sí, presente</button><button class="btn big r" onclick="modalNoCond()">No</button></div>`:
+     `<p>${c&&c.ok===false?"⚠️ Registrado: no en condiciones · "+esc(c.motivo):"✓ Presente y en condiciones"}${r.cerrada?" · RIT cerrada":""}</p>${r.cerrada?"":`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalNoCond()">Cambiar a "no en condiciones"</button>`}`}
+   <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="modalPerfilTrab()">Mi perfil</button><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="salir()">Cerrar sesión</button></div></div>
+  ${r&&pres?`
+  ${misCtl.length?`<div class="card"><h2>Mis controles a confirmar en terreno <span class="tag ${misCtl.every(x=>x.k.confirmado)?"ok":"no"}">${misCtl.filter(x=>x.k.confirmado).length}/${misCtl.length}</span></h2>
+   ${misCtl.map(({a,s,j,k})=>`<button class="btn ${k.confirmado?"t":"s"} w" style="justify-content:flex-start;text-align:left;font-weight:500;line-height:1.3" ${r.cerrada&&!k.confirmado?"disabled":""} onclick="confirmarControl('${a.id}',${j},'${k.c}')"><span style="font-size:20px">${k.confirmado?"✓✓":"☐"}</span><span><b>${s.rf}-${k.c}</b> ${esc(RF[s.rf].c.find(x=>x[0]===k.c)[1])}<br><small style="opacity:.8">${esc(a.nombre)}</small></span></button>`).join("")}
+   <div class="info">Toca cada control cuando lo hayas verificado en terreno. Tu supervisor lo ve al instante.</div></div>`:""}
+  <div class="card"><h2>RIT de hoy · dirige ${esc(r.dirige)||"—"}</h2>
+   ${r.acts.filter(a=>a.nombre).map((a,i)=>`<div class="rfslot" style="background:#fff"><b>${i+1}. ${esc(a.nombre)}</b>${a.critica?' <span class="tag no">crítica</span>':""}
+    ${PREP.filter(([p])=>a.prep[p]===false).map(([p])=>`<div class="info warn">🟩 ${p}: NO · TV ${esc(a.tv[p]?.num||"")}</div>`).join("")}
+    ${a.rfs.filter(x=>x.rf).map(x=>`<div style="font-size:13px;margin-top:6px"><span class="tag rf">${x.rf}</span> <b>${RF[x.rf].n}</b>${x.cons?` · ${esc(x.cons)}`:""}<br>${x.ctl.map(k=>`<span class="tag ${k.c.startsWith("CCP")?"ccp":"ccm"}">${k.c}</span> ${esc(RF[x.rf].c.find(z=>z[0]===k.c)[1])} → 👤 ${esc(k.enc)}${k.confirmado?" <b style='color:var(--verde)'>✓✓</b>":""}`).join("<br>")}</div>`).join("")}</div>`).join("")||`<div class="empty">El supervisor aún no registra las actividades.</div>`}
+   ${Object.entries(r.entorno||{}).filter(([k,v])=>v).map(([k,v])=>`<div class="info">${ENTORNO.find(e=>e[0]===k)[1]}: ${esc(v)}</div>`).join("")}
+   <div style="text-align:center;margin-top:8px"><button class="btn s sm" onclick="refrescarRIT('${r.id}').then(()=>render())">↻ Actualizar</button></div></div>`:""}
+  <div class="card"><h2>Mi historial</h2>${mias.filter(x=>!(r&&x.id===r.id)).slice(0,30).map(x=>{const q=(x.cuadrilla||[]).find(z=>z.uid===USER.id);const pr=q&&x.asistentes.includes(q.id);const cc=q?x.condicion[q.id]:null;const n=x.acts.reduce((m,a)=>m+a.rfs.reduce((o,s)=>o+s.ctl.filter(k=>k.enc===USER.nombre).length,0),0);const rec=x.recon.filter(z=>z.quien===USER.nombre);return `<div class="ritrow"><div class="nm"><b>${fmt(x.fecha)}</b><small>${pr?(cc&&cc.ok===false?"⚠️ no en condiciones":"✓ presente"):"— ausente"} · dirigió ${esc(x.dirige)||"—"}${n?` · ${n} control(es) a mi cargo`:""}${rec.length?" · 🏅 reconocido":""}</small></div></div>`;}).join("")||`<div class="empty">Aquí verás tus asistencias y controles de cada día.</div>`}</div>`;
+}
+function modalNoCond(){openModal(`<h3>⚠️ No estoy en condiciones</h3><label>¿Qué te pasa? (lo verá tu supervisor)</label><textarea id="nM" placeholder="Ej: malestar, fatiga, dolor…"></textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=nM.value.trim();if(!m){toast('Indica el motivo');return;}closeModal();marcarMiAsistencia(false,m)">Enviar</button></div>`);}
+function modalUnirse(){openModal(`<h3>Unirme a mi cuadrilla</h3><p style="font-size:13px;color:var(--muted)">Pídele a tu supervisor el código de 6 letras que aparece en su app.</p><label>Código de cuadrilla</label><input id="uC" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p w" onclick="unirse()">Unirme</button><button class="btn s sm w" onclick="closeModal()">Cancelar</button>`);setTimeout(()=>uC.focus(),50);}
+async function unirse(){const code=uC.value.trim().toUpperCase();if(code.length<4){toast("Código incompleto");return;}
+  if(sb){const {data,error}=await sb.rpc("rit_unirse_cuadrilla",{p_codigo:code});if(error||!data){toast("Código no encontrado");return;}CFG.supervisor_id=data.supervisor_id;CFG.supervisor_nombre=data.nombre;CFG.area=data.area||"";await syncCfg();await pullAll();}
+  else{CFG.supervisor_nombre="(modo local)";}
+  save(false);closeModal();render();toast("Te uniste a la cuadrilla de "+(CFG.supervisor_nombre||""));}
+function modalPerfilTrab(){openModal(`<h3>Mi perfil</h3><label>Nombre</label><input id="pN" value="${esc(USER.nombre)}"><label>Cargo / empresa</label><input id="pC" value="${esc(CFG.cargo||"")}"><div class="info">Cuadrilla: ${esc(CFG.supervisor_nombre||"—")} · ${esc(CFG.area||"")}</div><button class="btn s sm w" onclick="closeModal();modalUnirse()">Cambiar de cuadrilla</button><button class="btn p w" onclick="USER.nombre=pN.value.trim()||USER.nombre;CFG.cargo=pC.value.trim();LS.setItem(KEYU,JSON.stringify(USER));save(false);syncCfg();closeModal();render()">Guardar</button>`);}
+
+/* ========= RESUMEN (RIT cerrada) ========= */
+function pResumen(){
+  const nombres=(R.cuadrilla||[]).filter(p=>R.asistentes.includes(p.id)).map(p=>p.nombre),al=alertas(R),tv=tvs(R);
+  return `<div class="card sum" style="border-top:5px solid var(--verde)"><h2>✓ RIT cerrada</h2>
+   <dl><dt>Fecha</dt><dd><b>${fmt(R.fecha)}</b> · Turno ${esc(R.turno||"")}${R.ultimo?" · último día":""}</dd><dt>Área</dt><dd>${esc(R.area)}</dd><dt>Supervisor</dt><dd>${esc(R.supervisor)}</dd><dt>Dirigió</dt><dd>${esc(R.dirige)}</dd><dt>Duración</dt><dd>${mmss(segundos(R))} (${R.inicioTs?R.inicioTs.slice(11,16):""} → ${R.finTs?new Date(R.finTs).toTimeString().slice(0,5):""})</dd><dt>Asistentes</dt><dd>${nombres.length}</dd><dt>Actividades</dt><dd>${R.acts.filter(a=>a.nombre).length} (${R.acts.filter(a=>a.critica).length} críticas)</dd><dt>RF</dt><dd>${rfsDe(R).map(k=>`<span class="tag rf">${k}</span>`).join(" ")||"—"}</dd><dt>Tarjetas Verdes</dt><dd>${tv.length?tv.map(t=>`<span class="tag tv">🟩 ${esc(t.num)}</span>`).join(" "):"—"}</dd><dt>Alertas</dt><dd>${al.length?`<span class="tag no">${al.length}</span>`:`<span class="tag ok">0</span>`}</dd></dl></div>
+   <button class="btn p big w" onclick="setView('home')">Volver al inicio</button>
+   <button class="btn s sm w" onclick="detalles()">Ver detalles</button>`;
+}
 
 /* ========= CUADRILLA Y DATOS ========= */
 function modalCuadrilla(first){
   openModal(`<h3>👥 Cuadrilla y datos del área</h3>${first?`<div class="info">Se guarda una sola vez; después solo tocas "Iniciar RIT de hoy".</div>`:""}
    <div class="row"><div><label>Gerencia</label><input id="cG" value="${esc(CFG.gerencia)}" placeholder="GOP"></div><div><label>Superintendencia / EE.CC.</label><input id="cS" value="${esc(CFG.sup)}" placeholder="SINFRA"></div></div>
    <label>Área / frente de trabajo</label><input id="cA" value="${esc(CFG.area)}" placeholder="Ej: Techumbres Planta LR">
-   <div class="row"><div><label>Supervisor</label><input id="cP" value="${esc(CFG.supervisor)}"></div><div><label>Turno</label><select id="cT">${["Día","Noche","A","B","C","D"].map(t=>`<option ${t===CFG.turno?"selected":""}>${t}</option>`).join("")}</select></div></div>
+   <div class="row"><div><label>Supervisor</label><input id="cP" value="${esc(CFG.supervisor||(USER?USER.nombre:""))}"></div><div><label>Turno</label><select id="cT">${TURNOS.map(t=>`<option ${t===CFG.turno?"selected":""}>${t}</option>`).join("")}</select></div></div>
+   ${CFG.codigo?`<div class="info"><b>Código de cuadrilla: ${CFG.codigo}</b> · quien lo ingrese en su app queda en tu cuadrilla y marca su propia asistencia.</div>`:""}
    <label>Integrantes de la cuadrilla</label><div id="cuadL">${cuadHTML()}</div>
    <div class="row" style="margin-top:6px"><input id="cN" placeholder="Nombre"><input id="cC" placeholder="Cargo / empresa"></div>
-   <button class="btn s sm w" onclick="addCuad()">+ Agregar integrante</button>
-   <button class="btn p w" onclick="guardarCfg()">Guardar</button>`);
+   <button class="btn s sm w" onclick="addCuad()">+ Agregar integrante</button><button class="btn p w" onclick="guardarCfg()">Guardar</button>`);
 }
-function cuadHTML(){return CFG.cuadrilla.map(p=>`<div class="persona"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}</small></div><button class="btn d" onclick="delCuad('${p.id}')">✕</button></div>`).join("")||`<div class="empty">Sin integrantes aún.</div>`;}
-function addCuad(){const n=document.getElementById("cN").value.trim();if(!n)return;CFG.cuadrilla.push({id:uid(),nombre:n,cargo:document.getElementById("cC").value.trim()});save();document.getElementById("cuadL").innerHTML=cuadHTML();document.getElementById("cN").value="";document.getElementById("cC").value="";document.getElementById("cN").focus();}
-function delCuad(id){CFG.cuadrilla=CFG.cuadrilla.filter(p=>p.id!==id);save();document.getElementById("cuadL").innerHTML=cuadHTML();}
-function guardarCfg(){const g=i=>document.getElementById(i).value.trim();Object.assign(CFG,{gerencia:g("cG"),sup:g("cS"),area:g("cA"),supervisor:g("cP"),turno:g("cT")});save();closeModal();render();}
+function cuadHTML(){return CFG.cuadrilla.map(p=>`<div class="persona"><div class="av" ${p.uid?'style="background:var(--turquesa)"':""}>${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${p.uid?' · <span style="color:var(--turquesa)">📱 con app</span>':' · sin app (lo marcas tú)'}</small></div>${p.uid?"":`<button class="btn d" onclick="delCuad('${p.id}')">✕</button>`}</div>`).join("")||`<div class="empty">Sin integrantes aún. Comparte tu código para que se unan, o agrégalos a mano.</div>`;}
+function addCuad(){const n=document.getElementById("cN").value.trim();if(!n)return;CFG.cuadrilla.push({id:uid(),nombre:n,cargo:document.getElementById("cC").value.trim()});save(false);document.getElementById("cuadL").innerHTML=cuadHTML();cN.value="";cC.value="";cN.focus();}
+function delCuad(id){CFG.cuadrilla=CFG.cuadrilla.filter(p=>p.id!==id);save(false);document.getElementById("cuadL").innerHTML=cuadHTML();}
+function guardarCfg(){const g=i=>document.getElementById(i).value.trim();Object.assign(CFG,{gerencia:g("cG"),sup:g("cS"),area:g("cA"),supervisor:g("cP"),turno:g("cT")});if(R&&!R.cerrada){R.cuadrilla=CFG.cuadrilla.map(p=>({...p}));Object.assign(R,{supervisor:CFG.supervisor,area:CFG.area,turno:CFG.turno,gerencia:CFG.gerencia,sup:CFG.sup});}save();closeModal();render();}
 
-/* ========= PASO: quién dirige ========= */
+/* ========= PASOS ========= */
 function pDirige(){
-  const hechos=DB.filter(x=>x.id!==R.id).slice(-6).map(x=>x.dirige);
+  const hechos=DB.filter(x=>x.id!==R.id&&mine(x)).slice(-6).map(x=>x.dirige);
   return `<div class="q">¿Quién dirige la reunión hoy?</div>
-   ${CFG.cuadrilla.map(p=>`<div class="persona ${R.dirige===p.nombre?"sel":""}" onclick="R.dirige='${esc(p.nombre)}';save();render()"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${hechos.includes(p.nombre)?" · ya dirigió hace poco":""}</small></div>${R.dirige===p.nombre?"✓":""}</div>`).join("")}
+   ${cuad().map(p=>`<div class="persona ${R.dirige===p.nombre?"sel":""}" onclick="R.dirige='${esc(p.nombre)}';save();render()"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${hechos.includes(p.nombre)?" · ya dirigió hace poco":""}</small></div>${R.dirige===p.nombre?"✓":""}</div>`).join("")}
    <div class="toggle ${R.ultimo?"on":""}" onclick="R.ultimo=!R.ultimo;save();render()"><div class="sw"></div><span><b>Hoy es el último día del turno</b><br><small style="color:var(--muted)">Se agrega el paso de aportes y reconocimiento</small></span></div>`;
 }
-
-/* ========= PASO: asistencia ========= */
-function joinURL(){const u=new URL(location.href);u.search="";u.hash="";return `${u.href}?join=${R.id}&a=${encodeURIComponent(CFG.area)}&f=${R.fecha}`;}
+function joinURL(){const u=new URL(location.href);u.search="";u.hash="";return `${u.href}?join=${R.id}&a=${encodeURIComponent(R.area||"")}&f=${R.fecha}`;}
 function pAsist(){
   const noOk=Object.values(R.condicion).filter(c=>c.ok===false).length;
-  return `<div class="q">¿Quiénes están y en condiciones?</div>
-   <div class="info" style="margin-bottom:10px">Toca el nombre para marcar presente. Luego <b>OK</b> si está en condiciones de trabajar, <b>NO</b> si no.</div>
-   ${CFG.cuadrilla.map(p=>{const pres=R.asistentes.includes(p.id),c=R.condicion[p.id]||{};return `<div class="persona ${pres?"on":""}"><div class="av" onclick="togAsist('${p.id}')">${pres?"✓":ini(p.nombre)}</div><div class="nm" onclick="togAsist('${p.id}')">${esc(p.nombre)}<small>${esc(p.cargo||"")}${c.ok===false?` · <span style="color:var(--rojo)">${esc(c.motivo)}</span>`:""}</small></div>
-     ${pres?`<div class="yn"><button class="${c.ok===true?"si":""}" onclick="R.condicion['${p.id}']={ok:true};save();render()">OK</button><button class="${c.ok===false?"no":""}" onclick="modalCond('${p.id}')">NO</button></div>`:""}</div>`;}).join("")}
-   <button class="btn s w" onclick="CFG.cuadrilla.forEach(p=>{if(!R.asistentes.includes(p.id))R.asistentes.push(p.id);if(!R.condicion[p.id])R.condicion[p.id]={ok:true};});save();render()">Todos presentes y OK</button>
-   <div class="card" style="margin-top:12px"><h2>Registro por QR (opcional) <span class="tag ok">${R.asistentes.length} presentes</span>${noOk?` <span class="tag no">${noOk} no en condiciones</span>`:""}</h2>
-    <div id="qrBox" style="display:grid;place-items:center"></div><div class="info" style="text-align:center">Cada persona escanea, escribe su nombre y le aparece un QR; tú lo lees con la cámara.</div>
-    <div class="row" style="margin-top:8px"><button class="btn s sm" onclick="pantallaQR()">Ampliar QR</button><button class="btn t sm" onclick="escanear()">📷 Escanear</button></div></div>`;
+  return `<div class="q">¿Quiénes están y en condiciones?</div><div class="info" style="margin-bottom:10px">Toca el nombre para marcar presente. Luego <b>OK</b> si está en condiciones de trabajar, <b>NO</b> si no.</div>
+   ${cuad().map(p=>{const pres=R.asistentes.includes(p.id),c=R.condicion[p.id]||{};return `<div class="persona ${pres?"on":""}"><div class="av" onclick="togAsist('${p.id}')">${pres?"✓":ini(p.nombre)}</div><div class="nm" onclick="togAsist('${p.id}')">${esc(p.nombre)}<small>${esc(p.cargo||"")}${c.ok===false?` · <span style="color:var(--rojo)">${esc(c.motivo)}</span>`:""}${c.self?' · <span style="color:var(--turquesa)">📱 marcó desde su app</span>':""}</small></div>${pres?`<div class="yn"><button class="${c.ok===true?"si":""}" onclick="R.condicion['${p.id}']={ok:true};save();render()">OK</button><button class="${c.ok===false?"no":""}" onclick="modalCond('${p.id}')">NO</button></div>`:""}</div>`;}).join("")}
+   <button class="btn s w" onclick="cuad().forEach(p=>{if(!R.asistentes.includes(p.id))R.asistentes.push(p.id);if(!R.condicion[p.id])R.condicion[p.id]={ok:true};});save();render()">Todos presentes y OK</button>
+   <div class="card" style="margin-top:12px"><h2>Registro por QR (opcional) <span class="tag ok">${R.asistentes.length} presentes</span>${noOk?` <span class="tag no">${noOk} no en condiciones</span>`:""}</h2><div id="qrBox" style="display:grid;place-items:center"></div><div class="info" style="text-align:center">Cada persona escanea, escribe su nombre y le aparece un QR; tú lo lees con la cámara.</div><div class="row" style="margin-top:8px"><button class="btn s sm" onclick="pantallaQR()">Ampliar QR</button><button class="btn t sm" onclick="escanear()">📷 Escanear</button></div></div>`;
 }
 function togAsist(id){const i=R.asistentes.indexOf(id);if(i<0){R.asistentes.push(id);R.condicion[id]={ok:true};}else{R.asistentes.splice(i,1);delete R.condicion[id];}save();render();}
-function modalCond(id){const p=CFG.cuadrilla.find(x=>x.id===id),c=R.condicion[id]||{};openModal(`<h3>⚠️ ${esc(p.nombre)} no está en condiciones</h3><label>¿Qué pasa y qué se hace?</label><textarea id="cM" placeholder="Ej: fatiga; se reasigna a apoyo en piso sin carga / se deriva a policlínico">${esc(c.motivo||"")}</textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=document.getElementById('cM').value.trim();if(!m){toast('Indica el motivo');return;}R.condicion['${id}']={ok:false,motivo:m};save();closeModal();render()">Registrar</button></div>`);}
-
-/* ========= PASO: actividades ========= */
-function pActs(){
-  return `<div class="q">¿Qué haremos hoy y estamos preparados?</div>
-   ${R.acts.map((a,i)=>actHTML(a,i)).join("")}
-   <button class="btn s w" onclick="R.acts.push({id:uid(),nombre:'',critica:false,prep:{},tv:{},rf:'',cons:'',ctl:[]});save();render()">+ Otra actividad</button>`;
-}
+function modalCond(id){const p=cuad().find(x=>x.id===id),c=R.condicion[id]||{};openModal(`<h3>⚠️ ${esc(p.nombre)} no está en condiciones</h3><label>¿Qué pasa y qué se hace?</label><textarea id="cM" placeholder="Ej: fatiga; se reasigna a apoyo en piso sin carga / se deriva a policlínico">${esc(c.motivo||"")}</textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=document.getElementById('cM').value.trim();if(!m){toast('Indica el motivo');return;}R.condicion['${id}']={ok:false,motivo:m};save();closeModal();render()">Registrar</button></div>`);}
+function pActs(){return `<div class="q">¿Qué haremos hoy y estamos preparados?</div>${R.acts.map((a,i)=>actHTML(a,i)).join("")}<button class="btn s w" onclick="R.acts.push(nuevaAct());save();render()">+ Otra actividad</button>`;}
 const act=id=>R.acts.find(a=>a.id===id);
 function actHTML(a,i){
-  const d=RF[a.rf];
   return `<div class="act ${a.critica?"crit":""}">
    <div class="top"><div class="num">${i+1}</div><input value="${esc(a.nombre)}" placeholder="Actividad ${i+1}: qué y dónde" oninput="act('${a.id}').nombre=this.value;save()">${R.acts.length>MIN_ACTS?`<button class="btn d" onclick="R.acts=R.acts.filter(x=>x.id!=='${a.id}');save();render()">✕</button>`:""}</div>
    <div class="chips" style="margin-top:8px"><div class="chip ${a.critica?"on":""}" onclick="act('${a.id}').critica=!act('${a.id}').critica;save();render()">${a.critica?"🔥 Crítica":"Marcar como crítica"}</div></div>
    <div class="prep">${PREP.map(([p,q])=>`<span style="font-size:14px">${q}${a.prep[p]===false&&a.tv[p]?`<br><span class="tag tv" onclick="modalTV('${a.id}','${p}')">🟩 TV ${esc(a.tv[p].num)}</span>`:""}</span><div class="yn"><button class="${a.prep[p]===true?"si":""}" onclick="act('${a.id}').prep['${p}']=true;delete act('${a.id}').tv['${p}'];save();render()">SÍ</button><button class="${a.prep[p]===false?"no":""}" onclick="modalTV('${a.id}','${p}')">NO</button></div>`).join("")}</div>
-   <div class="rfbox"><label style="margin-top:0">Riesgo de fatalidad de esta actividad</label>
-    <select onchange="const x=act('${a.id}');x.rf=this.value;x.ctl=[];save();render()"><option value="">— Sin RF / elegir —</option>${Object.keys(RF).map(k=>`<option value="${k}" ${k===a.rf?"selected":""}>${k} · ${RF[k].n}</option>`).join("")}</select>
-    ${d?`<div class="info"><b>${d.ev}</b> · energía ${d.en}</div><label>¿Qué podría pasar?</label><input value="${esc(a.cons)}" placeholder="Consecuencia para personas / activos" oninput="act('${a.id}').cons=this.value;save()">
-    <label>Controles críticos que vamos a verificar <span class="tag ccp">CCP</span> <span class="tag ccm">CCM</span></label>
-    <div class="ctl">${d.c.map(([c,t])=>{const m=a.ctl.find(x=>x.c===c);return `<button class="${m?"on":""}" onclick="togCtl('${a.id}','${c}')"><b>${a.rf}-${c}</b>${t}${m?`<i>👤 Confirma: ${esc(m.enc)}</i>`:""}</button>`;}).join("")}</div>`:""}
-   </div></div>`;
+   <label style="margin-top:12px">Riesgos de fatalidad de esta actividad (hasta ${RF_POR_ACT})</label>
+   ${a.rfs.map((s,j)=>rfSlot(a,j,s)).join("")}</div>`;
+}
+function rfSlot(a,j,s){
+  const d=RF[s.rf],usados=a.rfs.map(x=>x.rf).filter((x,k)=>x&&k!==j);
+  return `<div class="rfslot ${s.rf?"":"empty"}"><div style="display:flex;gap:8px;align-items:center"><span class="tag rf">RF ${j+1}</span><select style="flex:1" onchange="const x=act('${a.id}').rfs[${j}];x.rf=this.value;x.ctl=[];save();render()"><option value="">— ${j===0?"Elegir riesgo de fatalidad":"Otro RF (opcional)"} —</option>${Object.keys(RF).filter(k=>!usados.includes(k)).map(k=>`<option value="${k}" ${k===s.rf?"selected":""}>${k} · ${RF[k].n}</option>`).join("")}</select></div>
+   ${d?`<div class="info"><b>${d.ev}</b> · energía ${d.en}</div><label>¿Qué podría pasar?</label><input value="${esc(s.cons)}" placeholder="Consecuencia para personas / activos" oninput="act('${a.id}').rfs[${j}].cons=this.value;save()">
+   <label>Controles críticos que vamos a verificar <span class="tag ccp">CCP</span> <span class="tag ccm">CCM</span></label>
+   <div class="ctl">${d.c.map(([c,t])=>{const m=s.ctl.find(x=>x.c===c);return `<button class="${m?"on":""}" onclick="togCtl('${a.id}',${j},'${c}')"><b>${s.rf}-${c}</b>${t}${m?`<i>👤 Confirma: ${esc(m.enc)}${m.confirmado?' <b style="color:var(--verde)">✓✓ confirmado en terreno</b>':""}</i>`:""}</button>`;}).join("")}</div>`:""}</div>`;
 }
 function modalTV(aid,p){const a=act(aid),tv=a.tv[p]||{num:"",desc:""};openModal(`<h3>🟩 Levantar Tarjeta Verde</h3><div class="info"><b>${esc(a.nombre)||"Actividad"}</b> · ${p}: NO</div><label>N° de Tarjeta Verde</label><input id="tvN" value="${esc(tv.num)}" placeholder="TV-00000"><label>¿Qué pasó y qué se hizo?</label><textarea id="tvD" placeholder="Qué falta o no conforma, dónde, y la acción inmediata (reprogramar, reemplazar, segregar…)">${esc(tv.desc)}</textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="guardarTV('${aid}','${p}')">Registrar</button></div>`);setTimeout(()=>document.getElementById("tvN").focus(),50);}
-function guardarTV(aid,p){const num=document.getElementById("tvN").value.trim(),desc=document.getElementById("tvD").value.trim();if(!num){toast("Falta el N° de TV");return;}if(!desc){toast("Describe qué pasó");return;}const a=act(aid);a.prep[p]=false;a.tv[p]={num,desc,hora:hora()};save();closeModal();render();toast("TV "+num+" registrada");}
-function togCtl(aid,c){
-  const a=act(aid),i=a.ctl.findIndex(x=>x.c===c);if(i>=0){a.ctl.splice(i,1);save();render();return;}
-  const t=RF[a.rf].c.find(x=>x[0]===c)[1],nombres=CFG.cuadrilla.filter(p=>R.asistentes.includes(p.id)).map(p=>p.nombre);
-  openModal(`<h3>👤 ¿Quién confirma este control en terreno?</h3><div class="info"><span class="tag ${c.startsWith("CCP")?"ccp":"ccm"}">${a.rf}-${c}</span> ${t}</div>
-   ${nombres.map(n=>`<div class="persona" onclick="a=act('${aid}');a.ctl.push({c:'${c}',enc:'${esc(n)}'});save();closeModal();render()"><div class="av">${ini(n)}</div><div class="nm">${esc(n)}</div></div>`).join("")||`<div class="info warn">Primero marca la asistencia.</div>`}
-   <button class="btn s w" onclick="closeModal()">Cancelar</button>`);
+function guardarTV(aid,p){const num=tvN.value.trim(),desc=tvD.value.trim();if(!num){toast("Falta el N° de TV");return;}if(!desc){toast("Describe qué pasó");return;}const a=act(aid);a.prep[p]=false;a.tv[p]={num,desc,hora:hora()};save();closeModal();render();toast("TV "+num+" registrada");}
+function togCtl(aid,j,c){
+  const s=act(aid).rfs[j],i=s.ctl.findIndex(x=>x.c===c);if(i>=0){s.ctl.splice(i,1);save();render();return;}
+  const t=RF[s.rf].c.find(x=>x[0]===c)[1],nombres=cuad().filter(p=>R.asistentes.includes(p.id)).map(p=>p.nombre);
+  openModal(`<h3>👤 ¿Quién confirma este control en terreno?</h3><div class="info"><span class="tag ${c.startsWith("CCP")?"ccp":"ccm"}">${s.rf}-${c}</span> ${t}</div>
+   ${nombres.map(n=>`<div class="persona" onclick="act('${aid}').rfs[${j}].ctl.push({c:'${c}',enc:'${esc(n)}'});save();closeModal();render()"><div class="av">${ini(n)}</div><div class="nm">${esc(n)}</div></div>`).join("")||`<div class="info warn">Primero marca la asistencia.</div>`}<button class="btn s w" onclick="closeModal()">Cancelar</button>`);
 }
-
-/* ========= PASO: entorno ========= */
-function pEntorno(){
-  return `<div class="q">¿Algo del entorno puede afectarnos hoy?</div>
-   <div class="info" style="margin-bottom:10px">Toca lo que aplica y escribe una línea. Si no hay nada, sigue.</div>
-   ${ENTORNO.map(([k,l])=>`<div class="toggle ${k in R.entorno?"on":""}" onclick="if('${k}' in R.entorno){delete R.entorno['${k}'];}else{R.entorno['${k}']='';}save();render()"><div class="sw"></div><span>${l}</span></div>
-     ${k in R.entorno?`<textarea style="margin-top:6px" placeholder="Describe y qué se hace al respecto" oninput="R.entorno['${k}']=this.value;save()" onclick="event.stopPropagation()">${esc(R.entorno[k])}</textarea>`:""}`).join("")}`;
-}
-
-/* ========= PASO: último día ========= */
-function pUltimo(){
-  return `<div class="q">Último día: aportes y reconocimiento</div>
+function pEntorno(){return `<div class="q">¿Algo del entorno puede afectarnos hoy?</div><div class="info" style="margin-bottom:10px">Toca lo que aplica y escribe una línea. Si no hay nada, sigue.</div>
+   ${ENTORNO.map(([k,l])=>`<div class="toggle ${k in R.entorno?"on":""}" onclick="if('${k}' in R.entorno){delete R.entorno['${k}'];}else{R.entorno['${k}']='';}save();render()"><div class="sw"></div><span>${l}</span></div>${k in R.entorno?`<textarea style="margin-top:6px" placeholder="Describe y qué se hace al respecto" oninput="R.entorno['${k}']=this.value;save()">${esc(R.entorno[k])}</textarea>`:""}`).join("")}`;}
+function pUltimo(){return `<div class="q">Último día: aportes y reconocimiento</div>
    <div class="card"><h2>¿Qué mejorarían para trabajar más seguros?</h2><div class="info">Herramientas, método de trabajo, comunicación, equipamiento, señalética, EPP… Se revisan al inicio del próximo turno.</div>
-   ${R.aportes.map((x,i)=>`<div class="rfbox" style="background:#fff"><textarea placeholder="Propuesta" oninput="R.aportes[${i}].prop=this.value;save()">${esc(x.prop)}</textarea><div class="row"><div><label>Responsable</label><input value="${esc(x.resp)}" list="dl" oninput="R.aportes[${i}].resp=this.value;save()"></div><div><label>Para cuándo</label><input type="date" value="${x.fecha||""}" oninput="R.aportes[${i}].fecha=this.value;save()"></div></div><button class="btn d" onclick="R.aportes.splice(${i},1);save();render()">Quitar</button></div>`).join("")}
+   ${R.aportes.map((x,i)=>`<div class="rfslot" style="background:#fff"><textarea placeholder="Propuesta" oninput="R.aportes[${i}].prop=this.value;save()">${esc(x.prop)}</textarea><div class="row"><div><label>Responsable</label><input value="${esc(x.resp)}" list="dl" oninput="R.aportes[${i}].resp=this.value;save()"></div><div><label>Para cuándo</label><input type="date" value="${x.fecha||""}" oninput="R.aportes[${i}].fecha=this.value;save()"></div></div><button class="btn d" onclick="R.aportes.splice(${i},1);save();render()">Quitar</button></div>`).join("")}
    <button class="btn s w" onclick="R.aportes.push({prop:'',resp:'',fecha:'',estado:'pendiente'});save();render()">+ Aporte</button></div>
-   <div class="card"><h2>¿A quién reconocemos por su gestión de riesgos?</h2>
-   ${R.recon.map((x,i)=>`<div class="rfbox" style="background:#fff"><input value="${esc(x.quien)}" list="dl" placeholder="Nombre" oninput="R.recon[${i}].quien=this.value;save()"><textarea style="margin-top:6px" placeholder="Por qué (conducta, detuvo una tarea insegura, aporte…)" oninput="R.recon[${i}].motivo=this.value;save()">${esc(x.motivo)}</textarea><button class="btn d" onclick="R.recon.splice(${i},1);save();render()">Quitar</button></div>`).join("")}
-   <button class="btn s w" onclick="R.recon.push({quien:'',motivo:''});save();render()">+ Reconocimiento</button></div>
-   <datalist id="dl">${CFG.cuadrilla.map(p=>`<option value="${esc(p.nombre)}">`).join("")}</datalist>`;
-}
-
-/* ========= PASO: cierre ========= */
+   <div class="card"><h2>¿A quién reconocemos por su gestión de riesgos?</h2>${R.recon.map((x,i)=>`<div class="rfslot" style="background:#fff"><input value="${esc(x.quien)}" list="dl" placeholder="Nombre" oninput="R.recon[${i}].quien=this.value;save()"><textarea style="margin-top:6px" placeholder="Por qué (conducta, detuvo una tarea insegura, aporte…)" oninput="R.recon[${i}].motivo=this.value;save()">${esc(x.motivo)}</textarea><button class="btn d" onclick="R.recon.splice(${i},1);save();render()">Quitar</button></div>`).join("")}
+   <button class="btn s w" onclick="R.recon.push({quien:'',motivo:''});save();render()">+ Reconocimiento</button></div><datalist id="dl">${cuad().map(p=>`<option value="${esc(p.nombre)}">`).join("")}</datalist>`;}
 function pCierre(){
-  const nombres=CFG.cuadrilla.filter(p=>R.asistentes.includes(p.id)).map(p=>p.nombre), al=alertas(R), rfs=[...new Set(R.acts.map(a=>a.rf).filter(Boolean))];
-  return `<div class="q">Repaso y firmas</div>
-   <div class="card sum"><dl><dt>Fecha</dt><dd>${fmt(R.fecha)}${R.ultimo?" · último día":""}</dd><dt>Área</dt><dd>${esc(CFG.area)} · ${esc(CFG.gerencia)} / ${esc(CFG.sup)}</dd><dt>Dirige</dt><dd>${esc(R.dirige)}</dd><dt>Supervisor</dt><dd>${esc(CFG.supervisor)}</dd><dt>Duración</dt><dd>${R.inicioHora} → ${R.finHora||"en curso"} · ${minutos(R)} min</dd><dt>Asistentes</dt><dd>${nombres.length}: ${esc(nombres.join(", "))}</dd></dl>
+  const nombres=cuad().filter(p=>R.asistentes.includes(p.id)).map(p=>p.nombre),al=alertas(R),rfs=rfsDe(R);
+  return `<div class="q">${R.cerrada?"Detalle de la RIT":"Repaso y firmas"}</div>
+   <div class="card sum"><dl><dt>Fecha</dt><dd>${fmt(R.fecha)} · Turno ${esc(R.turno||"")}${R.ultimo?" · último día":""}</dd><dt>Área</dt><dd>${esc(R.area)} · ${esc(R.gerencia||"")} / ${esc(R.sup||"")}</dd><dt>Dirige</dt><dd>${esc(R.dirige)}</dd><dt>Supervisor</dt><dd>${esc(R.supervisor)}</dd><dt>Duración</dt><dd>${mmss(segundos(R))}${R.finTs?"":" · en curso"}</dd><dt>Asistentes</dt><dd>${nombres.length}: ${esc(nombres.join(", "))}</dd></dl>
    ${al.length?`<div class="info warn noprint"><b>Pendientes (${al.length}):</b><br>${al.map(esc).join("<br>")}</div>`:`<div class="info" style="color:var(--verde)">✓ Sin pendientes</div>`}</div>
-   <div class="card"><h2>Riesgos de fatalidad y controles de hoy</h2>${rfs.map(k=>`<div class="rfbox"><span class="tag rf">${k}</span> <b>${RF[k].n}</b>${R.acts.filter(a=>a.rf===k).map(a=>`<div style="font-size:13px;margin-top:6px"><b>${esc(a.nombre)}</b>${a.critica?' <span class="tag no">crítica</span>':""}${a.ctl.map(c=>`<br><span class="tag ${c.c.startsWith("CCP")?"ccp":"ccm"}">${c.c}</span> ${RF[k].c.find(x=>x[0]===c.c)[1]} → 👤 ${esc(c.enc)}`).join("")||"<br><span style='color:var(--rojo)'>sin controles marcados</span>"}</div>`).join("")}</div>`).join("")||`<div class="empty">No se asignó RF a ninguna actividad.</div>`}
+   <div class="card"><h2>Riesgos de fatalidad y controles de hoy</h2>${rfs.map(k=>`<div class="rfslot"><span class="tag rf">${k}</span> <b>${RF[k].n}</b>${R.acts.filter(a=>a.rfs.some(s=>s.rf===k)).map(a=>{const s=a.rfs.find(x=>x.rf===k);return `<div style="font-size:13px;margin-top:6px"><b>${esc(a.nombre)}</b>${a.critica?' <span class="tag no">crítica</span>':""}${s.cons?` · ${esc(s.cons)}`:""}${s.ctl.map(c=>`<br><span class="tag ${c.c.startsWith("CCP")?"ccp":"ccm"}">${c.c}</span> ${RF[k].c.find(x=>x[0]===c.c)[1]} → 👤 ${esc(c.enc)}${c.confirmado?" <b style='color:var(--verde)'>✓✓</b>":""}`).join("")||"<br><span style='color:var(--rojo)'>sin controles marcados</span>"}</div>`;}).join("")}</div>`).join("")||`<div class="empty">No se asignó RF a ninguna actividad.</div>`}
    ${tvs(R).map(t=>`<div class="info">🟩 <b>TV ${esc(t.num)}</b> · ${esc(t.act)} · ${t.item}: ${esc(t.desc)}</div>`).join("")}
    ${Object.entries(R.entorno).filter(([k,v])=>v).map(([k,v])=>`<div class="info">${ENTORNO.find(e=>e[0]===k)[1]}: ${esc(v)}</div>`).join("")}</div>
-   ${R.ultimo?`<div class="card"><h2>Aportes y reconocimiento</h2>${R.aportes.filter(a=>a.prop).map(a=>`<div class="info">📌 ${esc(a.prop)} · ${esc(a.resp)} · ${a.fecha||"s/f"}</div>`).join("")}${R.recon.filter(a=>a.quien).map(a=>`<div class="info">🏅 ${esc(a.quien)}: ${esc(a.motivo)}</div>`).join("")}</div>`:""}
-   <div class="card"><h2>Firmas</h2><div class="row"><div><label>Dirige · ${esc(R.dirige)}</label><div class="sigbox" onclick="${R.cerrada?"":"modalFirma('firmaDirige')"}">${R.firmaDirige?`<img src="${R.firmaDirige}">`:`<span style="color:var(--muted);font-size:13px">Toca para firmar</span>`}</div></div><div><label>Supervisor · ${esc(CFG.supervisor)}</label><div class="sigbox" onclick="${R.cerrada?"":"modalFirma('firmaSup')"}">${R.firmaSup?`<img src="${R.firmaSup}">`:`<span style="color:var(--muted);font-size:13px">Toca para firmar</span>`}</div></div></div>
+   ${R.ultimo?`<div class="card"><h2>Aportes y reconocimiento</h2>${R.aportes.filter(a=>a.prop).map(a=>`<div class="info">📌 ${esc(a.prop)} · ${esc(a.resp)} · ${a.fecha||"s/f"} · ${a.estado==="cumplido"?"✅":"⏳"}</div>`).join("")}${R.recon.filter(a=>a.quien).map(a=>`<div class="info">🏅 ${esc(a.quien)}: ${esc(a.motivo)}</div>`).join("")}</div>`:""}
+   <div class="card"><h2>Firmas</h2><div class="row"><div><label>Dirige · ${esc(R.dirige)}</label><div class="sigbox" onclick="${R.cerrada?"":"modalFirma('firmaDirige')"}">${R.firmaDirige?`<img src="${R.firmaDirige}">`:`<span style="color:var(--muted);font-size:13px">Toca para firmar</span>`}</div></div><div><label>Supervisor · ${esc(R.supervisor)}</label><div class="sigbox" onclick="${R.cerrada?"":"modalFirma('firmaSup')"}">${R.firmaSup?`<img src="${R.firmaSup}">`:`<span style="color:var(--muted);font-size:13px">Toca para firmar</span>`}</div></div></div>
    <label>Observaciones</label><textarea oninput="R.obs=this.value;save()" ${R.cerrada?"readonly":""}>${esc(R.obs)}</textarea><button class="btn s sm w noprint" onclick="window.print()">Imprimir / PDF</button></div>`;
 }
 let drawing=false,firmaKey="";
-function modalFirma(k){firmaKey=k;openModal(`<h3>✍️ Firma · ${esc(k==="firmaDirige"?R.dirige:CFG.supervisor)}</h3><canvas class="sigcv" id="sig"></canvas><div class="row" style="margin-top:10px"><button class="btn s" onclick="const c=document.getElementById('sig');c.getContext('2d').clearRect(0,0,c.width,c.height);c._d=false">Limpiar</button><button class="btn t" onclick="const c=document.getElementById('sig');if(!c._d){toast('Dibuja la firma');return;}R[firmaKey]=c.toDataURL();save();closeModal();render()">Guardar</button></div>`);const cv=document.getElementById("sig");cv.width=cv.clientWidth*2;cv.height=480;cv._d=false;}
+function modalFirma(k){firmaKey=k;openModal(`<h3>✍️ Firma · ${esc(k==="firmaDirige"?R.dirige:R.supervisor)}</h3><canvas class="sigcv" id="sig"></canvas><div class="row" style="margin-top:10px"><button class="btn s" onclick="const c=document.getElementById('sig');c.getContext('2d').clearRect(0,0,c.width,c.height);c._d=false">Limpiar</button><button class="btn t" onclick="const c=document.getElementById('sig');if(!c._d){toast('Dibuja la firma');return;}R[firmaKey]=c.toDataURL();save();closeModal();render()">Guardar</button></div>`);const cv=document.getElementById("sig");cv.width=cv.clientWidth*2;cv.height=480;cv._d=false;}
 const pos=(cv,e)=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*cv.width/r.width,y:(e.clientY-r.top)*cv.height/r.height};};
 document.addEventListener("pointerdown",e=>{const cv=e.target.closest("#sig");if(!cv)return;drawing=true;cv._d=true;const x=cv.getContext("2d"),p=pos(cv,e);x.beginPath();x.moveTo(p.x,p.y);});
 document.addEventListener("pointermove",e=>{if(!drawing)return;const cv=document.getElementById("sig");if(!cv)return;const x=cv.getContext("2d");x.lineWidth=3;x.lineCap="round";x.strokeStyle="#1E2428";const p=pos(cv,e);x.lineTo(p.x,p.y);x.stroke();});
 document.addEventListener("pointerup",()=>{drawing=false;});
-function cerrar(){
-  const f=[];if(!R.firmaDirige)f.push("firma de quien dirige");if(!R.firmaSup)f.push("firma del supervisor");
-  if(f.length){toast("Falta: "+f.join(" y "));return;}
-  const al=alertas(R);if(al.length&&!confirm(`Hay ${al.length} pendiente(s). ¿Cerrar igual?`))return;
-  R.cerrada=true;R.finHora=hora();save();toast(`RIT cerrada · ${minutos(R)} min`);setView("home");
-}
+function cerrar(){const f=[];if(!R.firmaDirige)f.push("firma de quien dirige");if(!R.firmaSup)f.push("firma del supervisor");if(f.length){toast("Falta: "+f.join(" y "));return;}const al=alertas(R);if(al.length&&!confirm(`Hay ${al.length} pendiente(s). ¿Cerrar igual?`))return;R.cerrada=true;R.finTs=ahora();save();toast(`RIT cerrada · ${mmss(segundos(R))}`);setView("resumen");}
 
 /* ========= QR ========= */
-function openModal(h){document.getElementById("modalBox").innerHTML=h;document.getElementById("modal").classList.add("open");}
-function closeModal(){document.getElementById("modal").classList.remove("open");}
 function drawQR(el,t,s){el.innerHTML="";if(typeof QRCode==="undefined"){el.innerHTML=`<div class="info">QR no disponible sin internet.</div>`;return;}new QRCode(el,{text:t,width:s,height:s,correctLevel:QRCode.CorrectLevel.M});}
-function pantallaQR(){openModal(`<h3 style="justify-content:center">Escanea para registrarte</h3><div id="qrBig" style="display:grid;place-items:center;padding:10px"></div><div style="text-align:center;font-size:13px;color:var(--muted)">${esc(CFG.area)} · ${fmt(R.fecha)}</div><button class="btn s w" onclick="closeModal()">Cerrar</button>`);drawQR(document.getElementById("qrBig"),joinURL(),Math.min(320,innerWidth-80));}
-function registrar(n,c){n=(n||"").trim();if(!n)return false;let p=CFG.cuadrilla.find(x=>x.nombre.toLowerCase()===n.toLowerCase());if(!p){p={id:uid(),nombre:n,cargo:(c||"").trim()};CFG.cuadrilla.push(p);}if(!R.asistentes.includes(p.id)){R.asistentes.push(p.id);R.condicion[p.id]={ok:true};}save();return true;}
+function pantallaQR(){openModal(`<h3 style="justify-content:center">Escanea para registrarte</h3><div id="qrBig" style="display:grid;place-items:center;padding:10px"></div><div style="text-align:center;font-size:13px;color:var(--muted)">${esc(R.area)} · ${fmt(R.fecha)}</div><button class="btn s w" onclick="closeModal()">Cerrar</button>`);drawQR(document.getElementById("qrBig"),joinURL(),Math.min(320,innerWidth-80));}
+function registrar(n,c){n=(n||"").trim();if(!n)return false;let p=cuad().find(x=>x.nombre.toLowerCase()===n.toLowerCase());if(!p){p={id:uid(),nombre:n,cargo:(c||"").trim()};R.cuadrilla.push(p);CFG.cuadrilla.push({...p});}if(!R.asistentes.includes(p.id)){R.asistentes.push(p.id);R.condicion[p.id]={ok:true};}save();return true;}
 let scanStream=null,scanRAF=null;
-function escanear(){openModal(`<h3>Escanear QR del participante</h3><video id="vid" playsinline style="width:100%;border-radius:10px;background:#000"></video><canvas id="cvs" class="hid"></canvas><div id="scanMsg" class="info" style="text-align:center">Apunta al QR del celular del participante.</div><button class="btn s w" onclick="stopScan()">Cerrar</button>`);
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(st=>{scanStream=st;const v=document.getElementById("vid");v.srcObject=st;v.play();tick();}).catch(()=>{document.getElementById("scanMsg").textContent="No se pudo abrir la cámara (requiere HTTPS y permiso).";});}
+function escanear(){openModal(`<h3>Escanear QR del participante</h3><video id="vid" playsinline style="width:100%;border-radius:10px;background:#000"></video><canvas id="cvs" class="hid"></canvas><div id="scanMsg" class="info" style="text-align:center">Apunta al QR del celular del participante.</div><button class="btn s w" onclick="stopScan()">Cerrar</button>`);navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(st=>{scanStream=st;const v=document.getElementById("vid");v.srcObject=st;v.play();tick();}).catch(()=>{document.getElementById("scanMsg").textContent="No se pudo abrir la cámara (requiere HTTPS y permiso).";});}
 function tick(){const v=document.getElementById("vid"),c=document.getElementById("cvs");if(!v||!scanStream)return;if(v.readyState===v.HAVE_ENOUGH_DATA){c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext("2d");x.drawImage(v,0,0);const code=jsQR(x.getImageData(0,0,c.width,c.height).data,c.width,c.height);if(code){try{const o=JSON.parse(code.data);if(o.rit===R.id&&registrar(o.n,o.c)){if(navigator.vibrate)navigator.vibrate(80);document.getElementById("scanMsg").innerHTML=`<b style="color:var(--verde)">✓ ${esc(o.n)}</b> registrado.`;setTimeout(()=>{if(scanStream)scanRAF=requestAnimationFrame(tick);},1500);return;}}catch(e){}}}scanRAF=requestAnimationFrame(tick);}
 function stopScan(){if(scanRAF)cancelAnimationFrame(scanRAF);scanRAF=null;if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}closeModal();render();}
 const Q=new URLSearchParams(location.search);
@@ -350,27 +468,54 @@ function vistaParticipante(){const prev=JSON.parse(LS.getItem("rit.yo")||"{}");d
 /* ========= AYUDA ========= */
 function ayuda(){openModal(`<h3>Guía RIT en 10 pasos</h3><div class="info">Herramienta preventiva que se aplica <b>antes de iniciar la actividad</b>. Diaria, máx. 30 min, dirigida por un trabajador distinto cada día. El supervisor entrega el plan del día; el superintendente verifica que se haga en todos los equipos.</div>
  <div class="hlist"><div>¿Cada asistente está en condiciones de realizar su trabajo?</div><div>Gerencia, superintendencia y fecha.</div><div>Actividades del día, identificando las críticas.</div><div>¿Instructivos? ¿Materiales? ¿EPP?</div><div>Riesgos de fatalidad y controles por actividad.</div><div>Condiciones del entorno: clima, trabajos simultáneos, correctivas.</div><div>Coordinar interferencias del entorno.</div><div>Último día: aportes para la gestión de riesgos.</div><div>Último día: reconocer a un trabajador.</div><div>Cierre: repasar RF y controles fundamentales.</div></div>
- <div class="info" style="margin-top:8px"><b>En la app:</b> Iniciar RIT de hoy → quién dirige → asistencia → actividades → entorno → (último día) → cierre con firmas. Listo.</div><button class="btn p w" onclick="closeModal()">Entendido</button>`);}
+ <div class="info" style="margin-top:8px"><b>En la app:</b> Iniciar RIT de hoy → quién dirige → asistencia → actividades → entorno → (último día) → cierre con firmas.</div><button class="btn p w" onclick="closeModal()">Entendido</button>`);}
 
-/* ========= REPORTE ========= */
+/* ========= REPOSITORIO (admin) ========= */
+function filtrar(list){const f=REPO_F;return list.filter(r=>(!f.area||(r.area||"").toLowerCase().includes(f.area.toLowerCase()))&&(!f.sup||(r.supervisor||r.email||"").toLowerCase().includes(f.sup.toLowerCase()))&&(!f.desde||r.fecha>=f.desde)&&(!f.hasta||r.fecha<=f.hasta));}
+function repositorio(){
+  const all=filtrar(DB).slice().reverse(),areas=[...new Set(DB.map(r=>r.area).filter(Boolean))],sups=[...new Set(DB.map(r=>r.supervisor||r.email).filter(Boolean))];
+  return `<div class="q">Repositorio de RIT</div><div class="row" style="margin-bottom:10px"><button class="btn s sm" onclick="setView('home')">‹ Inicio</button><button class="btn p sm" onclick="setView('rep')">📊 Dashboard</button></div>
+   <div class="card"><div class="filters"><div><label>Área</label><input list="dA" value="${esc(REPO_F.area)}" oninput="REPO_F.area=this.value;render()" placeholder="Todas"><datalist id="dA">${areas.map(a=>`<option value="${esc(a)}">`).join("")}</datalist></div><div><label>Supervisor</label><input list="dS" value="${esc(REPO_F.sup)}" oninput="REPO_F.sup=this.value;render()" placeholder="Todos"><datalist id="dS">${sups.map(a=>`<option value="${esc(a)}">`).join("")}</datalist></div>
+   <div><label>Desde</label><input type="date" value="${REPO_F.desde}" oninput="REPO_F.desde=this.value;render()"></div><div><label>Hasta</label><input type="date" value="${REPO_F.hasta}" oninput="REPO_F.hasta=this.value;render()"></div></div>
+   <div style="font-size:13px;color:var(--muted)">${all.length} RIT · ${new Set(all.map(r=>r.user_id||r.email)).size} supervisores · ${all.filter(r=>!r.cerrada).length} sin cerrar</div></div>
+   <div class="card">${all.map(r=>filaRIT(r,true)).join("")||`<div class="empty">Sin RIT con esos filtros.</div>`}</div>
+   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="exportar(filtrar(DB))">Exportar JSON (filtrado)</button><button class="btn s sm w" onclick="exportarCSV(filtrar(DB))">Exportar CSV</button></div>`;
+}
+function exportar(list){const b=new Blob([JSON.stringify(list,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="RIT_"+today()+".json";a.click();}
+function exportarCSV(list){const rows=[["fecha","turno","area","supervisor","dirige","asistentes","no_condiciones","duracion_min","cerrada","actividades","criticas","rf","tarjetas_verdes","alertas","aportes","ultimo_dia"]];list.forEach(r=>rows.push([r.fecha,r.turno,r.area,r.supervisor||r.email,r.dirige,r.asistentes.length,Object.values(r.condicion).filter(c=>c.ok===false).length,minutos(r),r.cerrada?1:0,r.acts.filter(a=>a.nombre).length,r.acts.filter(a=>a.critica).length,rfsDe(r).join(" "),tvs(r).map(t=>t.num).join(" "),alertas(r).length,r.aportes.filter(a=>a.prop).length,r.ultimo?1:0]));const csv=rows.map(x=>x.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(";")).join("\n");const b=new Blob(["﻿"+csv],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="RIT_"+today()+".csv";a.click();}
+
+/* ========= DASHBOARD / REPORTE ========= */
 function reporte(){
-  const cerr=DB.filter(r=>r.cerrada),tv=DB.flatMap(tvs),al=DB.flatMap(r=>alertas(r).map(a=>({a,r}))),durs=cerr.map(minutos),prom=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
-  const rfc={};DB.forEach(r=>r.acts.forEach(a=>{if(a.rf)rfc[a.rf]=(rfc[a.rf]||0)+1;}));const top=Object.entries(rfc).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const noc=DB.reduce((n,r)=>n+Object.values(r.condicion).filter(c=>c.ok===false).length,0),p=pend();
-  return `<div class="q">Reporte</div><button class="btn s sm" onclick="setView('home')" style="margin-bottom:10px">‹ Inicio</button>
-   <div class="kpis"><div class="kpi"><b>${DB.length}</b><span>RIT realizadas</span></div><div class="kpi v"><b>${cerr.length}</b><span>Cerradas</span></div><div class="kpi ${durs.some(m=>m>MAX_MIN)?"r":"t"}"><b>${prom}'</b><span>Duración promedio</span></div>
+  const base=isAdmin()?filtrar(DB):DB.filter(mine);
+  const cerr=base.filter(r=>r.cerrada),tv=base.flatMap(tvs),al=base.flatMap(r=>alertas(r).map(a=>({a,r}))),durs=cerr.map(minutos),prom=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
+  const rfc={};base.forEach(r=>r.acts.forEach(a=>a.rfs.forEach(s=>{if(s.rf)rfc[s.rf]=(rfc[s.rf]||0)+1;})));const top=Object.entries(rfc).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const noc=base.reduce((n,r)=>n+Object.values(r.condicion).filter(c=>c.ok===false).length,0);
+  const porSup={};base.forEach(r=>{const k=r.supervisor||r.email||"—";porSup[k]=porSup[k]||{n:0,tv:0,al:0,min:0};porSup[k].n++;porSup[k].tv+=tvs(r).length;porSup[k].al+=alertas(r).length;porSup[k].min+=minutos(r);});
+  const ctlTot=base.reduce((n,r)=>n+r.acts.reduce((m,a)=>m+a.rfs.reduce((q,s)=>q+s.ctl.length,0),0),0),ctlSin=base.reduce((n,r)=>n+r.acts.reduce((m,a)=>m+a.rfs.reduce((q,s)=>q+s.ctl.filter(c=>!c.enc).length,0),0),0);
+  const bar=(l,v,mx,col)=>`<div style="display:grid;grid-template-columns:110px 1fr 28px;gap:8px;align-items:center;font-size:12px;margin:6px 0"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l}</span><div style="height:10px;background:#EEF1F3;border-radius:5px;overflow:hidden"><i style="display:block;height:100%;width:${mx?v/mx*100:0}%;background:${col}"></i></div><b>${v}</b></div>`;
+  return `<div class="q">${isAdmin()?"Dashboard":"Mi reporte"}</div><div class="row" style="margin-bottom:10px"><button class="btn s sm" onclick="setView('home')">‹ Inicio</button>${isAdmin()?`<button class="btn s sm" onclick="setView('repo')">🗂 Repositorio</button>`:""}</div>
+   ${isAdmin()&&(REPO_F.area||REPO_F.sup||REPO_F.desde||REPO_F.hasta)?`<div class="info" style="margin-bottom:10px">Filtros del repositorio aplicados · <a href="#" onclick="REPO_F={area:'',sup:'',desde:'',hasta:''};render();return false">quitar</a></div>`:""}
+   <div class="kpis"><div class="kpi"><b>${base.length}</b><span>RIT realizadas</span></div><div class="kpi v"><b>${cerr.length}</b><span>Cerradas</span></div><div class="kpi ${durs.some(m=>m>MAX_MIN)?"r":"t"}"><b>${prom}'</b><span>Duración promedio</span></div>
    <div class="kpi v"><b>${tv.length}</b><span>Tarjetas Verdes</span></div><div class="kpi r"><b>${al.length}</b><span>Alertas</span></div><div class="kpi r"><b>${noc}</b><span>No en condiciones</span></div>
-   <div class="kpi n"><b>${DB.reduce((n,r)=>n+r.acts.filter(a=>a.critica).length,0)}</b><span>Actividades críticas</span></div><div class="kpi"><b>${p.length}</b><span>Aportes pendientes</span></div><div class="kpi t"><b>${new Set(DB.map(r=>r.dirige).filter(Boolean)).size}</b><span>Han dirigido</span></div></div>
-   <div class="card" style="margin-top:12px"><h2>RF más frecuentes</h2>${top.map(([k,v])=>`<div style="display:grid;grid-template-columns:48px 1fr 24px;gap:8px;align-items:center;font-size:12px;margin:6px 0"><b>${k}</b><div style="height:10px;background:#EEF1F3;border-radius:5px;overflow:hidden"><i style="display:block;height:100%;width:${v/top[0][1]*100}%;background:var(--naranjo)"></i></div>${v}</div><div style="font-size:11px;color:var(--muted);margin:-4px 0 4px 56px">${RF[k].n}</div>`).join("")||`<div class="empty">Sin datos.</div>`}</div>
-   <div class="card"><h2>Tarjetas Verdes</h2>${DB.flatMap(r=>tvs(r).map(t=>`<div class="info">🟩 <b>TV ${esc(t.num)}</b> · ${fmt(r.fecha)} · ${esc(t.act)} · ${t.item}<br>${esc(t.desc)}</div>`)).join("")||`<div class="empty">Ninguna.</div>`}</div>
-   <div class="card"><h2>Alertas</h2>${al.map(x=>`<div class="ritrow"><div class="nm">${esc(x.a)}<small>${fmt(x.r.fecha)}</small></div><button class="btn s sm" onclick="abrir('${x.r.id}')">Ver</button></div>`).join("")||`<div class="empty">Sin alertas 👏</div>`}</div>
-   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="const b=new Blob([JSON.stringify({cfg:CFG,rits:DB},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='RIT_'+today()+'.json';a.click()">Exportar JSON</button><button class="btn s sm w" onclick="window.print()">Imprimir</button></div>`;
+   <div class="kpi n"><b>${base.reduce((n,r)=>n+r.acts.filter(a=>a.critica).length,0)}</b><span>Actividades críticas</span></div><div class="kpi t"><b>${ctlTot?Math.round((ctlTot-ctlSin)/ctlTot*100):0}%</b><span>Controles con encargado</span></div><div class="kpi"><b>${base.reduce((n,r)=>n+r.aportes.filter(a=>a.prop&&a.estado!=="cumplido").length,0)}</b><span>Aportes pendientes</span></div>
+   ${isAdmin()?`<div class="kpi t"><b>${Object.keys(porSup).length}</b><span>Supervisores</span></div><div class="kpi"><b>${new Set(base.map(r=>r.area)).size}</b><span>Áreas</span></div><div class="kpi t"><b>${new Set(base.map(r=>r.dirige).filter(Boolean)).size}</b><span>Han dirigido</span></div>`:""}</div>
+   ${isAdmin()?`<div class="card" style="margin-top:12px"><h2>RIT por supervisor</h2>${Object.entries(porSup).sort((a,b)=>b[1].n-a[1].n).map(([k,v])=>bar(esc(k),v.n,Math.max(...Object.values(porSup).map(x=>x.n)),"var(--turquesa)")+`<div style="font-size:11px;color:var(--muted);margin:-4px 0 6px 118px">prom. ${v.n?Math.round(v.min/v.n):0}' · 🟩 ${v.tv} TV · ${v.al} alertas</div>`).join("")||`<div class="empty">Sin datos.</div>`}</div>`:""}
+   <div class="card" ${isAdmin()?"":'style="margin-top:12px"'}><h2>RF más frecuentes</h2>${top.map(([k,v])=>bar(`<b>${k}</b> ${RF[k].n}`,v,top[0][1],"var(--naranjo)")).join("")||`<div class="empty">Sin datos.</div>`}</div>
+   <div class="card"><h2>Tarjetas Verdes</h2>${base.flatMap(r=>tvs(r).map(t=>`<div class="info">🟩 <b>TV ${esc(t.num)}</b> · ${fmtS(r.fecha)} · ${esc(r.supervisor||"")} · ${esc(t.act)} · ${t.item}<br>${esc(t.desc)}</div>`)).reverse().join("")||`<div class="empty">Ninguna.</div>`}</div>
+   <div class="card"><h2>Alertas</h2>${al.slice().reverse().map(x=>`<div class="ritrow"><div class="nm">${esc(x.a)}<small>${fmtS(x.r.fecha)} · ${esc(x.r.supervisor||x.r.email||"")} · ${esc(x.r.area||"")}</small></div><button class="btn s sm" onclick="abrir('${x.r.id}')">Ver</button></div>`).join("")||`<div class="empty">Sin alertas 👏</div>`}</div>
+   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="exportarCSV(${isAdmin()?"filtrar(DB)":"DB.filter(mine)"})">Exportar CSV</button><button class="btn s sm w" onclick="window.print()">Imprimir</button></div>`;
 }
 
+/* ========= ARRANQUE ========= */
 document.getElementById("modal").onclick=e=>{if(e.target.id==="modal"){if(scanStream)stopScan();else closeModal();}};
-setInterval(()=>{if(view==="rit"&&R&&!R.cerrada){const t=document.getElementById("timer"),m=minutos(R);t.textContent=`⏱ ${m}/${MAX_MIN} min`;t.classList.toggle("over",m>MAX_MIN);}},1000);
+setInterval(()=>{if(!R||R.cerrada)return;const sg=segundos(R);if(view==="rit"){const t=document.getElementById("timer");t.textContent=`⏱ ${mmss(sg)}`;t.classList.toggle("over",sg>MAX_MIN*60);}const hc=document.getElementById("homeClock");if(hc){hc.textContent=`⏱ ${mmss(sg)}`;hc.classList.toggle("over",sg>MAX_MIN*60);}},1000);
 
-if(Q.get("join"))vistaParticipante();else render();
+async function arranque(){
+  if(Q.get("join")){vistaParticipante();return;}
+  if(sb){const {data}=await sb.auth.getSession();if(data.session){await sesionDesde(data.session.user);return;}view="login";render();return;}
+  const u=JSON.parse(LS.getItem(KEYU)||"null");if(u){USER=u;entrar();}else{view="login";render();}
+}
+arranque();
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
 </script>
 </body>
