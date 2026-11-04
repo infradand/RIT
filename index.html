@@ -166,8 +166,9 @@ function closeModal(){document.getElementById("modal").classList.remove("open");
 /* ========= SESIÓN ========= */
 let USER=null;                      // {id,email,nombre,role}
 const isAdmin=()=>USER&&USER.role==="admin";
-const isTrab=()=>USER&&USER.role==="trabajador";
-const mine=r=>!USER||!r.user_id||r.user_id===USER.id||(isTrab()&&(r.cuadrilla||[]).some(p=>p.uid===USER.id));
+const isLider=()=>USER&&!!CFG.codigo;
+const isTrab=()=>USER&&!isAdmin()&&!CFG.codigo;   // miembro de una cuadrilla (no la creó)
+const mine=r=>!USER||!r.user_id||r.user_id===USER.id||(r.cuadrilla||[]).some(p=>p.uid===USER.id);
 const ROLES={trabajador:"Trabajador",supervisor:"Supervisor / líder de cuadrilla",admin:"Administración"};
 const genCodigo=()=>Math.random().toString(36).slice(2,8).toUpperCase();
 
@@ -182,30 +183,34 @@ const minutos=d=>Math.round(segundos(d)/60);
 const mmss=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const pend=()=>{const p=[];DB.filter(r=>r.cerrada&&mine(r)).forEach(r=>r.aportes.forEach(a=>{if(a.prop&&a.estado!=="cumplido")p.push({...a,ritId:r.id,fecha0:r.fecha});}));return p;};
 const nuevaAct=()=>({id:uid(),nombre:"",critica:false,prep:{},tv:{},rfs:Array.from({length:RF_POR_ACT},()=>({rf:"",cons:"",ctl:[]}))});
-function nuevaRIT(){return {id:uid(),user_id:USER?USER.id:null,email:USER?USER.email:"",supervisor:CFG.supervisor,area:CFG.area,gerencia:CFG.gerencia,sup:CFG.sup,turno:CFG.turno,fecha:today(),inicioTs:ahora(),finTs:null,dirige:"",ultimo:false,asistentes:[],condicion:{},cuadrilla:CFG.cuadrilla.map(p=>({...p})),cuadrilla_ids:CFG.cuadrilla.map(p=>p.uid).filter(Boolean),acts:Array.from({length:MIN_ACTS},nuevaAct),entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:"",updated_at:ahora()};}
+function nuevaRIT(){return {id:uid(),user_id:USER?USER.id:null,email:USER?USER.email:"",registra:USER?USER.nombre:"",supervisor:CFG.supervisor,area:CFG.area,gerencia:CFG.gerencia,sup:CFG.sup,turno:CFG.turno,fecha:today(),inicioTs:ahora(),finTs:null,dirige:"",ultimo:false,asistentes:[],condicion:{},cuadrilla:CFG.cuadrilla.map(p=>({...p})),cuadrilla_ids:CFG.cuadrilla.map(p=>p.uid).filter(Boolean),acts:Array.from({length:MIN_ACTS},nuevaAct),entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:"",updated_at:ahora()};}
 /* migración de RIT antiguas (v6: a.rf) */
 DB.forEach(r=>{r.acts.forEach(a=>{if(!a.rfs){a.rfs=[{rf:a.rf||"",cons:a.cons||"",ctl:a.ctl||[]}];}while(a.rfs.length<RF_POR_ACT)a.rfs.push({rf:"",cons:"",ctl:[]});});if(!r.inicioTs&&r.inicioHora)r.inicioTs=r.fecha+"T"+r.inicioHora+":00";if(!r.finTs&&r.finHora)r.finTs=r.fecha+"T"+r.finHora+":00";if(!r.cuadrilla)r.cuadrilla=CFG.cuadrilla;});
 const cuad=()=>R&&R.cuadrilla?R.cuadrilla:CFG.cuadrilla;
 
 /* ========= SINCRONIZACIÓN SUPABASE ========= */
-async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(isTrab())return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error)console.warn("sync",error.message);}
+async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(r.user_id&&r.user_id!==USER.id)return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error)console.warn("sync",error.message);}
 async function syncCfg(){if(!sb||!USER)return;await sb.from("perfiles").update({cfg:CFG,nombre:USER.nombre,cargo:CFG.cargo||null,codigo:CFG.codigo||null,supervisor_id:CFG.supervisor_id||null,updated_at:ahora()}).eq("id",USER.id);}
 async function pullAll(){
   if(!sb||!USER)return;
   const {data:perfil}=await sb.from("perfiles").select("*").eq("id",USER.id).maybeSingle();
-  if(perfil){USER.role=perfil.role||USER.role||"trabajador";USER.nombre=perfil.nombre||USER.nombre;if(perfil.cfg)CFG=Object.assign(CFG,perfil.cfg);CFG.codigo=perfil.codigo||CFG.codigo;CFG.supervisor_id=perfil.supervisor_id||CFG.supervisor_id;CFG.cargo=perfil.cargo||CFG.cargo;}
-  else{if(USER.role==="supervisor"&&!CFG.codigo)CFG.codigo=genCodigo();await sb.from("perfiles").insert({id:USER.id,email:USER.email,nombre:USER.nombre,role:USER.role||"trabajador",cfg:CFG,codigo:CFG.codigo||null,cargo:CFG.cargo||null});}
-  if(USER.role==="supervisor"){ if(!CFG.codigo){CFG.codigo=genCodigo();syncCfg();}
-    const {data:tr}=await sb.from("perfiles").select("id,nombre,cargo,email").eq("supervisor_id",USER.id);
-    (tr||[]).forEach(t=>{let p=CFG.cuadrilla.find(x=>x.uid===t.id);if(!p){p=CFG.cuadrilla.find(x=>!x.uid&&x.nombre.toLowerCase()===(t.nombre||"").toLowerCase());if(p)p.uid=t.id;else CFG.cuadrilla.push({id:uid(),uid:t.id,nombre:t.nombre||t.email,cargo:t.cargo||""});}else{p.nombre=t.nombre||p.nombre;p.cargo=t.cargo||p.cargo;}});
+  if(perfil){USER.role=perfil.role||"trabajador";USER.nombre=perfil.nombre||USER.nombre;if(perfil.cfg)CFG=Object.assign(CFG,perfil.cfg);CFG.codigo=perfil.codigo||"";CFG.supervisor_id=perfil.supervisor_id||"";CFG.cargo=perfil.cargo||CFG.cargo;}
+  else{await sb.from("perfiles").insert({id:USER.id,email:USER.email,nombre:USER.nombre,role:"trabajador",cfg:CFG,cargo:CFG.cargo||null});}
+  const lider=CFG.codigo?USER.id:CFG.supervisor_id;
+  if(lider){
+    const {data:lp}=await sb.from("perfiles").select("id,nombre,cargo,cfg").eq("id",lider).maybeSingle();
+    const {data:tr}=await sb.from("perfiles").select("id,nombre,cargo,email").eq("supervisor_id",lider);
+    if(lp&&!CFG.codigo){CFG.supervisor_nombre=lp.nombre;const c=lp.cfg||{};CFG.area=c.area||"";CFG.gerencia=c.gerencia||"";CFG.sup=c.sup||"";CFG.turno=c.turno||"A";CFG.supervisor=c.supervisor||lp.nombre;CFG.cuadrilla=(c.cuadrilla||[]).map(p=>({...p}));}
+    const todos=[...(lp?[{id:lp.id,nombre:lp.nombre,cargo:lp.cargo}]:[]),...(tr||[])];
+    todos.forEach(t=>{let p=CFG.cuadrilla.find(x=>x.uid===t.id);if(!p){p=CFG.cuadrilla.find(x=>!x.uid&&x.nombre.toLowerCase()===(t.nombre||"").toLowerCase());if(p)p.uid=t.id;else CFG.cuadrilla.push({id:uid(),uid:t.id,nombre:t.nombre||t.email,cargo:t.cargo||""});}else{p.nombre=t.nombre||p.nombre;p.cargo=t.cargo||p.cargo;}});
+    if(CFG.codigo)syncCfg();
   }
-  if(isTrab()&&CFG.supervisor_id){const {data:sup}=await sb.from("perfiles").select("nombre,cfg").eq("id",CFG.supervisor_id).maybeSingle();if(sup){CFG.supervisor_nombre=sup.nombre;CFG.area=(sup.cfg&&sup.cfg.area)||CFG.area;}}
   const {data:rows,error}=await sb.from("rits").select("id,user_id,email,data,updated_at").order("updated_at",{ascending:false}).limit(2000);
   if(error){toast("Sin conexión: trabajando con datos locales");return;}
-  const map=new Map(isTrab()?[]:DB.map(r=>[r.id,r]));
+  const map=new Map(DB.filter(r=>!r.user_id||r.user_id===USER.id).map(r=>[r.id,r]));
   rows.forEach(x=>{const r=x.data;r.user_id=x.user_id;r.email=x.email;const loc=map.get(r.id);if(!loc||(x.updated_at>(loc.updated_at||"")))map.set(r.id,r);});
   DB=[...map.values()].sort((a,b)=>(a.inicioTs||"").localeCompare(b.inicioTs||""));
-  if(!isTrab())DB.filter(r=>mine(r)&&!rows.find(x=>x.id===r.id)).forEach(r=>syncRIT(r));
+  DB.filter(r=>(!r.user_id||r.user_id===USER.id)&&!rows.find(x=>x.id===r.id)).forEach(r=>syncRIT(r));
   save(false);
 }
 
@@ -232,6 +237,10 @@ async function confirmarControl(aid,j,c){
   if(sb){await rpcTrab("rit_confirmar_control",{p_rit:r.id,p_act:aid,p_j:j,p_c:c,p_valor:k.confirmado});await refrescarRIT(r.id);}else{r.updated_at=ahora();save(false);}
   render();
 }
+async function crearCuadrilla(){if(CFG.supervisor_id){if(!confirm("Dejarás la cuadrilla de "+CFG.supervisor_nombre+" para crear la tuya. ¿Seguir?"))return;CFG.supervisor_id="";CFG.supervisor_nombre="";}
+  CFG.codigo=genCodigo();CFG.supervisor=CFG.supervisor||USER.nombre;if(!CFG.cuadrilla.some(p=>p.uid===USER.id))CFG.cuadrilla.unshift({id:uid(),uid:USER.id,nombre:USER.nombre,cargo:CFG.cargo||""});
+  save(false);if(sb){await sb.from("perfiles").update({codigo:CFG.codigo,supervisor_id:null,cfg:CFG,updated_at:ahora()}).eq("id",USER.id);}
+  closeModal();modalCuadrilla(true);}
 const ritDeHoyTrab=()=>DB.filter(r=>r.fecha===today()&&(r.cuadrilla||[]).some(p=>p.uid===USER.id)).sort((a,b)=>(b.inicioTs||"").localeCompare(a.inicioTs||""))[0];
 
 /* ========= LOGIN ========= */
@@ -243,7 +252,7 @@ function pLogin(){
      <label>Nombre</label><input id="lN" value="${esc(prev?prev.nombre:CFG.supervisor)}"><button class="btn p w" onclick="const n=lN.value.trim();if(!n){toast('Escribe tu nombre');return;}USER={id:'local',email:'',nombre:n,role:'admin'};LS.setItem(KEYU,JSON.stringify(USER));CFG.supervisor=CFG.supervisor||n;save(false);entrar()">Entrar</button></div>`;
     return;
   }
-  main.innerHTML=`<div class="login"><h2>Iniciar sesión</h2><p>Usa tu correo. Cada supervisor ve sus propias RIT; la administración ve el repositorio completo.</p>
+  main.innerHTML=`<div class="login"><h2>Iniciar sesión</h2><p>Una sola cuenta para todos: trabajadores, líderes de cuadrilla y supervisión, de Codelco o empresas contratistas.</p>
    <label>Correo</label><input id="lE" type="email" autocomplete="username" placeholder="nombre@codelco.cl"><label>Contraseña</label><input id="lP" type="password" autocomplete="current-password">
    <button class="btn p w" onclick="login()">Entrar</button>
    <button class="btn s sm w" onclick="registro()">Crear cuenta nueva</button>
@@ -251,14 +260,13 @@ function pLogin(){
 }
 async function login(){const e=lE.value.trim(),p=lP.value;if(!e||!p){toast("Correo y contraseña");return;}const {data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){lMsg.classList.remove("hid");lMsg.textContent="No se pudo entrar: "+error.message;return;}await sesionDesde(data.user);}
 function registro(){openModal(`<h3>Crear cuenta</h3><label>Nombre y apellido</label><input id="rN" placeholder="Como aparecerá en las RIT"><label>Cargo</label><input id="rC" placeholder="Ej: Maestro techumbres"><label>Correo</label><input id="rE" type="email"><label>Contraseña (mín. 6)</label><input id="rP" type="password">
-   <label>¿Cuál es tu rol?</label><div class="persona sel" id="rolT" onclick="selRol('trabajador')"><div class="av">👷</div><div class="nm">Trabajador<small>Marco mi asistencia y confirmo mis controles</small></div></div><div class="persona" id="rolS" onclick="selRol('supervisor')"><div class="av">🧭</div><div class="nm">Supervisor / líder de cuadrilla<small>Dirijo la RIT de mi cuadrilla</small></div></div>
+   <div class="info">Después de entrar podrás <b>crear una cuadrilla</b> o <b>unirte a una</b> con el código de quien la creó. Cualquier integrante puede registrar la RIT del día.</div>
    <button class="btn p w" onclick="crearCuenta()">Crear cuenta</button><button class="btn s sm w" onclick="closeModal()">Cancelar</button>`);}
-let ROL_NUEVO="trabajador";function selRol(r){ROL_NUEVO=r;rolT.classList.toggle("sel",r==="trabajador");rolS.classList.toggle("sel",r==="supervisor");}
-async function crearCuenta(){const n=rN.value.trim(),c=rC.value.trim(),e=rE.value.trim(),p=rP.value;if(!n||!e||p.length<6){toast("Completa los datos");return;}const {data,error}=await sb.auth.signUp({email:e,password:p,options:{data:{nombre:n,cargo:c,role:ROL_NUEVO}}});if(error){toast(error.message);return;}closeModal();if(data.session){await sesionDesde(data.user);}else{toast("Revisa tu correo para confirmar la cuenta");}}
-async function sesionDesde(u){const md=u.user_metadata||{};USER={id:u.id,email:u.email,nombre:md.nombre||u.email.split("@")[0],role:md.role||"trabajador"};if(md.cargo&&!CFG.cargo)CFG.cargo=md.cargo;if(USER.role==="supervisor"&&!CFG.supervisor)CFG.supervisor=USER.nombre;await pullAll();entrar();}
+async function crearCuenta(){const n=rN.value.trim(),c=rC.value.trim(),e=rE.value.trim(),p=rP.value;if(!n||!e||p.length<6){toast("Completa los datos");return;}const {data,error}=await sb.auth.signUp({email:e,password:p,options:{data:{nombre:n,cargo:c}}});if(error){toast(error.message);return;}closeModal();if(data.session){await sesionDesde(data.user);}else{toast("Revisa tu correo para confirmar la cuenta");}}
+async function sesionDesde(u){const md=u.user_metadata||{};USER={id:u.id,email:u.email,nombre:md.nombre||u.email.split("@")[0],role:"trabajador"};if(md.cargo&&!CFG.cargo)CFG.cargo=md.cargo;await pullAll();entrar();}
 async function salir(){if(sb)await sb.auth.signOut();USER=null;LS.removeItem(KEYU);R=null;view="login";render();}
 function entrar(){view="home";render();if(sb)iniciarPolling();}
-let pollT=null;function iniciarPolling(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{const r=isTrab()?ritDeHoyTrab():(R&&!R.cerrada?R:null);if(!r)return;if(await refrescarRIT(r.id)){if(view==="home"||view==="rit")render();}},8000);}
+let pollT=null;function iniciarPolling(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{const r=(R&&!R.cerrada&&view==="rit")?R:ritDeHoyTrab();if(!r)return;if(await refrescarRIT(r.id)){if(view==="home"||view==="rit")render();}},8000);}
 
 /* ========= RENDER ========= */
 function render(){
@@ -267,10 +275,10 @@ function render(){
   document.getElementById("prog").classList.toggle("hid",!enRit);
   const tm=document.getElementById("timer");tm.classList.toggle("hid",!(enRit&&!R.cerrada));
   if(enRit&&!R.cerrada){const sg=segundos(R);tm.textContent=`⏱ ${mmss(sg)}`;tm.classList.toggle("over",sg>MAX_MIN*60);}
-  document.getElementById("who").textContent=USER?USER.nombre.split(" ")[0]+(isAdmin()?" · admin":isTrab()?"":" · sup"):"";
+  document.getElementById("who").textContent=USER?USER.nombre.split(" ")[0]+(isAdmin()?" · admin":isLider()?" · líder":""):"";
   const main=document.getElementById("main");
   if(view==="login"){pLogin();return;}
-  if(view==="home"){main.innerHTML=isTrab()?homeTrab():home();return;}
+  if(view==="home"){const r0=ritDeHoyTrab();main.innerHTML=(isTrab()||(isLider()&&r0&&r0.user_id!==USER.id&&!r0.cerrada))?homeTrab():home();return;}
   if(view==="resumen"){main.innerHTML=pResumen();return;}
   if(view==="repo"){main.innerHTML=repositorio();return;}
   if(view==="rep"){main.innerHTML=reporte();return;}
@@ -302,7 +310,8 @@ function abrir(id){R=DB.find(r=>r.id===id);if(R.cerrada){setView("resumen");}els
 function detalles(){step=STEPS().length-1;setView("rit");}
 function iniciarHoy(){
   let r=DB.find(x=>x.fecha===today()&&!x.cerrada&&mine(x));
-  if(!r){if(!CFG.cuadrilla.length){modalCuadrilla(true);return;}r=nuevaRIT();const hechos=DB.filter(mine).slice(-6).map(x=>x.dirige);r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||"";DB.push(r);R=r;save();}
+  if(r&&r.user_id&&r.user_id!==USER.id){toast("La RIT de hoy la está registrando "+(r.registra||r.supervisor));setView("home");return;}
+  if(!r){if(!CFG.cuadrilla.length){if(isLider())modalCuadrilla(true);else toast("La cuadrilla aún no tiene integrantes");return;}r=nuevaRIT();if(!r.cuadrilla.some(p=>p.uid===USER.id))r.cuadrilla.unshift({id:uid(),uid:USER.id,nombre:USER.nombre,cargo:CFG.cargo||""});r.cuadrilla_ids=r.cuadrilla.map(p=>p.uid).filter(Boolean);const hechos=DB.filter(mine).slice(-6).map(x=>x.dirige);r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||"";DB.push(r);R=r;save();}
   R=r;step=0;setView("rit");
 }
 
@@ -310,11 +319,12 @@ function iniciarHoy(){
 function home(){
   const mias=DB.filter(mine),hoy=mias.find(x=>x.fecha===today()),pasadas=[...mias].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30),p=pend();
   return `<div class="hoy"><h2>HOY</h2><div class="f">${fmt(today())}</div>
-   ${!CFG.cuadrilla.length?`<p>Primero arma tu cuadrilla y datos del área (una sola vez).</p><button class="btn p big w" onclick="modalCuadrilla(true)">Configurar cuadrilla</button>`:
+   ${!isAdmin()&&!CFG.codigo&&!CFG.supervisor_id?`<p>Para empezar: crea la cuadrilla (serás su líder y tendrás un código para invitar) o únete a una existente.</p><button class="btn p big w" onclick="crearCuadrilla()">Crear mi cuadrilla</button><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalUnirse()">Unirme con un código</button>`:
+     !CFG.cuadrilla.length?`<p>Primero arma tu cuadrilla y datos del área (una sola vez).</p><button class="btn p big w" onclick="modalCuadrilla(true)">Configurar cuadrilla</button>`:
      hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada · ${mmss(segundos(hoy))} · dirigió ${esc(hoy.dirige)}</p><button class="btn s w" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button>`:
        `<div class="clock ${segundos(hoy)>MAX_MIN*60?"over":""}" id="homeClock">⏱ ${mmss(segundos(hoy))}</div><p>RIT en curso · dirige ${esc(hoy.dirige)||"—"} · ${hoy.asistentes.length} presentes</p><button class="btn p big w" onclick="iniciarHoy()">▶ Continuar RIT de hoy</button>`):
      `<p>${esc(CFG.area||"Área sin definir")} · turno ${esc(CFG.turno)} · ${CFG.cuadrilla.length} en cuadrilla · ${esc(CFG.supervisor||"—")}</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy</button>`}
-   ${USER.role==="supervisor"&&CFG.codigo?`<p style="margin-top:6px">Código de tu cuadrilla: <b style="font-size:18px;letter-spacing:.1em;color:var(--dorado)">${CFG.codigo}</b> <span style="opacity:.7">· tus trabajadores lo ingresan en su app</span></p>`:""}
+   ${CFG.codigo?`<p style="margin-top:6px">Código de tu cuadrilla: <b style="font-size:18px;letter-spacing:.1em;color:var(--dorado)">${CFG.codigo}</b> <span style="opacity:.7">· quien lo ingrese en su app queda en tu cuadrilla</span></p>`:""}
    <div class="row" style="margin-top:10px"><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalCuadrilla()">👥 Cuadrilla y datos</button>${isAdmin()?`<button class="btn s sm" style="background:var(--dorado);color:var(--pizarra);border:none" onclick="setView('repo')">🗂 Repositorio · Dashboard</button>`:`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="setView('rep')">📊 Mi reporte</button>`}</div>
    <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="salir()">Cerrar sesión</button></div></div>
   ${p.length?`<div class="card"><h2>Aportes pendientes del turno anterior <span class="tag no">${p.length}</span></h2>${p.map(a=>`<div class="ritrow"><div class="nm">${esc(a.prop)}<small>${esc(a.resp)} · compromiso ${a.fecha||"s/f"}</small></div><button class="btn t sm" onclick="cumplir('${a.ritId}','${esc(a.prop)}')">Cumplido</button></div>`).join("")}</div>`:""}
@@ -329,14 +339,16 @@ function alertas(r){const al=[];r.acts.forEach(a=>{PREP.forEach(([p])=>{if(a.pre
   if(r.finTs&&segundos(r)>MAX_MIN*60)al.push(`Reunión de ${minutos(r)} min (máx. ${MAX_MIN})`);return al;}
 
 /* ========= VISTA TRABAJADOR ========= */
+const r0=()=>ritDeHoyTrab();
 function homeTrab(){
   const r=ritDeHoyTrab(), p=r?(r.cuadrilla||[]).find(x=>x.uid===USER.id):null, c=r&&p?r.condicion[p.id]:null, pres=r&&p&&r.asistentes.includes(p.id);
   const mias=DB.filter(x=>(x.cuadrilla||[]).some(q=>q.uid===USER.id)).slice().reverse();
   const misCtl=r?r.acts.flatMap(a=>a.rfs.flatMap((s,j)=>s.ctl.filter(k=>k.enc===USER.nombre).map(k=>({a,s,j,k})))):[];
   return `<div class="hoy"><h2>HOY</h2><div class="f">${fmt(today())}</div>
-   ${!CFG.supervisor_id&&!(CFG.cuadrilla||[]).length&&!r?`<p>Para empezar, ingresa el código que te dio tu supervisor.</p><button class="btn p big w" onclick="modalUnirse()">Unirme a mi cuadrilla</button>`:
-     !r?`<p>Cuadrilla de ${esc(CFG.supervisor_nombre||"tu supervisor")} · ${esc(CFG.area||"")}<br>Tu supervisor aún no inicia la RIT de hoy.</p><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="pullAll().then(render)">Actualizar</button>`:
-     !pres?`<p>RIT en curso · dirige ${esc(r.dirige)||"—"} · supervisor ${esc(r.supervisor)}</p><div class="q" style="color:#fff;font-size:18px">¿Estás en condiciones de realizar tu trabajo?</div><div class="row"><button class="btn big" style="background:var(--verde);color:#fff" onclick="marcarMiAsistencia(true)">✓ Sí, presente</button><button class="btn big r" onclick="modalNoCond()">No</button></div>`:
+   ${!CFG.supervisor_id&&!(CFG.cuadrilla||[]).length&&!r?`<p>Para empezar: únete a tu cuadrilla con el código que te dio quien la creó, o crea una nueva (tendrás un código para invitar al resto).</p><button class="btn p big w" onclick="modalUnirse()">Unirme con un código</button><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="crearCuadrilla()">Crear mi cuadrilla</button>`:
+     !r?`<p>Cuadrilla de ${esc(CFG.supervisor_nombre||CFG.supervisor||"")} · ${esc(CFG.area||"")}<br>Nadie ha iniciado la RIT de hoy todavía.</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy (yo la registro)</button><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="pullAll().then(render)">↻ Actualizar</button>`:
+     r.user_id===USER.id&&!r.cerrada?`<p>Estás registrando la RIT de hoy · dirige ${esc(r.dirige)||"—"}</p><button class="btn p big w" onclick="R=r0();step=0;setView('rit')">▶ Continuar RIT de hoy</button>`:
+     !pres?`<p>RIT en curso · dirige ${esc(r.dirige)||"—"} · registra ${esc(r.registra||r.supervisor)}</p><div class="q" style="color:#fff;font-size:18px">¿Estás en condiciones de realizar tu trabajo?</div><div class="row"><button class="btn big" style="background:var(--verde);color:#fff" onclick="marcarMiAsistencia(true)">✓ Sí, presente</button><button class="btn big r" onclick="modalNoCond()">No</button></div>`:
      `<p>${c&&c.ok===false?"⚠️ Registrado: no en condiciones · "+esc(c.motivo):"✓ Presente y en condiciones"}${r.cerrada?" · RIT cerrada":""}</p>${r.cerrada?"":`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalNoCond()">Cambiar a "no en condiciones"</button>`}`}
    <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="modalPerfilTrab()">Mi perfil</button><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="salir()">Cerrar sesión</button></div></div>
   ${r&&pres?`
@@ -354,10 +366,10 @@ function homeTrab(){
 function modalNoCond(){openModal(`<h3>⚠️ No estoy en condiciones</h3><label>¿Qué te pasa? (lo verá tu supervisor)</label><textarea id="nM" placeholder="Ej: malestar, fatiga, dolor…"></textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=nM.value.trim();if(!m){toast('Indica el motivo');return;}closeModal();marcarMiAsistencia(false,m)">Enviar</button></div>`);}
 function modalUnirse(){openModal(`<h3>Unirme a mi cuadrilla</h3><p style="font-size:13px;color:var(--muted)">Pídele a tu supervisor el código de 6 letras que aparece en su app.</p><label>Código de cuadrilla</label><input id="uC" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p w" onclick="unirse()">Unirme</button><button class="btn s sm w" onclick="closeModal()">Cancelar</button>`);setTimeout(()=>uC.focus(),50);}
 async function unirse(){const code=uC.value.trim().toUpperCase();if(code.length<4){toast("Código incompleto");return;}
-  if(sb){const {data,error}=await sb.rpc("rit_unirse_cuadrilla",{p_codigo:code});if(error||!data){toast("Código no encontrado");return;}CFG.supervisor_id=data.supervisor_id;CFG.supervisor_nombre=data.nombre;CFG.area=data.area||"";await syncCfg();await pullAll();}
+  if(sb){const {data,error}=await sb.rpc("rit_unirse_cuadrilla",{p_codigo:code});if(error||!data){toast("Código no encontrado");return;}CFG.supervisor_id=data.supervisor_id;CFG.supervisor_nombre=data.nombre;CFG.area=data.area||"";CFG.codigo="";CFG.cuadrilla=[];await sb.from("perfiles").update({codigo:null,supervisor_id:CFG.supervisor_id,cfg:CFG,updated_at:ahora()}).eq("id",USER.id);await pullAll();}
   else{CFG.supervisor_nombre="(modo local)";}
   save(false);closeModal();render();toast("Te uniste a la cuadrilla de "+(CFG.supervisor_nombre||""));}
-function modalPerfilTrab(){openModal(`<h3>Mi perfil</h3><label>Nombre</label><input id="pN" value="${esc(USER.nombre)}"><label>Cargo / empresa</label><input id="pC" value="${esc(CFG.cargo||"")}"><div class="info">Cuadrilla: ${esc(CFG.supervisor_nombre||"—")} · ${esc(CFG.area||"")}</div><button class="btn s sm w" onclick="closeModal();modalUnirse()">Cambiar de cuadrilla</button><button class="btn p w" onclick="USER.nombre=pN.value.trim()||USER.nombre;CFG.cargo=pC.value.trim();LS.setItem(KEYU,JSON.stringify(USER));save(false);syncCfg();closeModal();render()">Guardar</button>`);}
+function modalPerfilTrab(){openModal(`<h3>Mi perfil</h3><label>Nombre</label><input id="pN" value="${esc(USER.nombre)}"><label>Cargo / empresa</label><input id="pC" value="${esc(CFG.cargo||"")}"><div class="info">Cuadrilla: ${esc(CFG.supervisor_nombre||"—")} · ${esc(CFG.area||"")}</div><button class="btn s sm w" onclick="closeModal();modalUnirse()">Cambiar de cuadrilla</button><button class="btn s sm w" onclick="crearCuadrilla()">Crear mi propia cuadrilla</button><button class="btn p w" onclick="USER.nombre=pN.value.trim()||USER.nombre;CFG.cargo=pC.value.trim();LS.setItem(KEYU,JSON.stringify(USER));save(false);syncCfg();closeModal();render()">Guardar</button>`);}
 
 /* ========= RESUMEN (RIT cerrada) ========= */
 function pResumen(){
@@ -373,9 +385,9 @@ function modalCuadrilla(first){
   openModal(`<h3>👥 Cuadrilla y datos del área</h3>${first?`<div class="info">Se guarda una sola vez; después solo tocas "Iniciar RIT de hoy".</div>`:""}
    <div class="row"><div><label>Gerencia</label><input id="cG" value="${esc(CFG.gerencia)}" placeholder="GOP"></div><div><label>Superintendencia / EE.CC.</label><input id="cS" value="${esc(CFG.sup)}" placeholder="SINFRA"></div></div>
    <label>Área / frente de trabajo</label><input id="cA" value="${esc(CFG.area)}" placeholder="Ej: Techumbres Planta LR">
-   <div class="row"><div><label>Supervisor</label><input id="cP" value="${esc(CFG.supervisor||(USER?USER.nombre:""))}"></div><div><label>Turno</label><select id="cT">${TURNOS.map(t=>`<option ${t===CFG.turno?"selected":""}>${t}</option>`).join("")}</select></div></div>
+   <div class="row"><div><label>Supervisor responsable (firma)</label><input id="cP" value="${esc(CFG.supervisor||(USER?USER.nombre:""))}"></div><div><label>Turno</label><select id="cT">${TURNOS.map(t=>`<option ${t===CFG.turno?"selected":""}>${t}</option>`).join("")}</select></div></div>
    ${CFG.codigo?`<div class="info"><b>Código de cuadrilla: ${CFG.codigo}</b> · quien lo ingrese en su app queda en tu cuadrilla y marca su propia asistencia.</div>`:""}
-   <label>Integrantes de la cuadrilla</label><div id="cuadL">${cuadHTML()}</div>
+   <label>Integrantes (los que ingresan tu código aparecen solos; agrega a mano a quien no use la app)</label><div id="cuadL">${cuadHTML()}</div>
    <div class="row" style="margin-top:6px"><input id="cN" placeholder="Nombre"><input id="cC" placeholder="Cargo / empresa"></div>
    <button class="btn s sm w" onclick="addCuad()">+ Agregar integrante</button><button class="btn p w" onclick="guardarCfg()">Guardar</button>`);
 }
