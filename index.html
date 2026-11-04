@@ -165,17 +165,15 @@ function toast(m){const t=document.getElementById("toast");t.textContent=m;t.cla
 function openModal(h){document.getElementById("modalBox").innerHTML=h;document.getElementById("modal").classList.add("open");}
 function closeModal(){document.getElementById("modal").classList.remove("open");}
 
-/* ========= SESIÓN ========= */
-let USER=null;                      // {id,email,nombre,role}
+/* ========= SESIÓN (sin cuentas) ========= */
+let USER=null;                      // {id,nombre,cargo}  · id local del celular
 const isAdmin=()=>USER&&USER.role==="admin";
 const isLider=()=>USER&&!!CFG.codigo;
-const isTrab=()=>USER&&!isAdmin()&&!CFG.codigo;   // miembro de una cuadrilla (no la creó)
-const mine=r=>!USER||!r.user_id||r.user_id===USER.id||(r.cuadrilla||[]).some(p=>p.uid===USER.id);
-const ROLES={trabajador:"Trabajador",supervisor:"Supervisor / líder de cuadrilla",admin:"Administración"};
-const genCodigo=()=>Math.random().toString(36).slice(2,8).toUpperCase();
-
+const isTrab=()=>false;
+const mine=r=>true;
+const genCodigo=()=>Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
 /* ========= DATOS ========= */
-const KEY="rit8.rits", KEYC="rit8.cfg", KEYU="rit8.user";
+const KEY="rit11.rits", KEYC="rit11.cfg", KEYU="rit11.user";
 let DB=JSON.parse(LS.getItem(KEY)||"[]");
 let CFG=Object.assign({gerencia:"",sup:"",area:"",supervisor:"",turno:"A",cuadrilla:[],codigo:"",cargo:"",supervisor_id:"",supervisor_nombre:""},JSON.parse(LS.getItem(KEYC)||"{}"));
 let R=null, step=0, view="home", REPO_F={area:"",sup:"",desde:"",hasta:""};
@@ -183,54 +181,54 @@ function save(sync=true){LS.setItem(KEY,JSON.stringify(DB));LS.setItem(KEYC,JSON
 const segundos=d=>{if(!d.inicioTs)return 0;const fin=d.finTs?new Date(d.finTs):new Date();return Math.max(0,Math.floor((fin-new Date(d.inicioTs))/1000));};
 const minutos=d=>Math.round(segundos(d)/60);
 const mmss=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-const pend=()=>{const p=[];DB.filter(r=>r.cerrada&&mine(r)).forEach(r=>r.aportes.forEach(a=>{if(a.prop&&a.estado!=="cumplido")p.push({...a,ritId:r.id,fecha0:r.fecha});}));return p;};
+const pend=()=>{const p=[];DB.filter(r=>r.cerrada&&r.codigo===CFG.codigo).forEach(r=>r.aportes.forEach(a=>{if(a.prop&&a.estado!=="cumplido")p.push({...a,ritId:r.id,fecha0:r.fecha});}));return p;};
 const nuevaAct=()=>({id:uid(),nombre:"",critica:false,prep:{},tv:{},rfs:Array.from({length:RF_POR_ACT},()=>({rf:"",cons:"",ctl:[]}))});
-function nuevaRIT(){return {id:uid(),codigo:CFG.codigo||"",user_id:USER?USER.id:null,email:USER?USER.email:"",registra:USER?USER.nombre:"",supervisor:CFG.supervisor,area:CFG.area,gerencia:CFG.gerencia,sup:CFG.sup,turno:CFG.turno,fecha:today(),inicioTs:ahora(),finTs:null,dirige:"",ultimo:false,asistentes:[],condicion:{},cuadrilla:CFG.cuadrilla.map(p=>({...p})),cuadrilla_ids:CFG.cuadrilla.map(p=>p.uid).filter(Boolean),acts:Array.from({length:MIN_ACTS},nuevaAct),entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:"",updated_at:ahora()};}
+function nuevaRIT(){return {id:uid(),codigo:CFG.codigo||"",user_id:null,email:"",registra:USER?USER.nombre:"",lider_id:USER?USER.id:"",supervisor:CFG.supervisor,area:CFG.area,gerencia:CFG.gerencia,sup:CFG.sup,turno:CFG.turno,fecha:today(),inicioTs:ahora(),finTs:null,dirige:"",ultimo:false,asistentes:[],condicion:{},cuadrilla:CFG.cuadrilla.map(p=>({...p})),cuadrilla_ids:CFG.cuadrilla.map(p=>p.uid).filter(Boolean),acts:Array.from({length:MIN_ACTS},nuevaAct),entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:"",updated_at:ahora()};}
 /* migración de RIT antiguas (v6: a.rf) */
 DB.forEach(r=>{r.acts.forEach(a=>{if(!a.rfs){a.rfs=[{rf:a.rf||"",cons:a.cons||"",ctl:a.ctl||[]}];}while(a.rfs.length<RF_POR_ACT)a.rfs.push({rf:"",cons:"",ctl:[]});});if(!r.inicioTs&&r.inicioHora)r.inicioTs=r.fecha+"T"+r.inicioHora+":00";if(!r.finTs&&r.finHora)r.finTs=r.fecha+"T"+r.finHora+":00";if(!r.cuadrilla)r.cuadrilla=CFG.cuadrilla;});
 const cuad=()=>R&&R.cuadrilla?R.cuadrilla:CFG.cuadrilla;
 
-/* ========= SINCRONIZACIÓN SUPABASE ========= */
-async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(r.user_id&&r.user_id!==USER.id)return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),codigo:r.codigo||CFG.codigo||null,data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error){r._dirty=true;LS.setItem(KEY,JSON.stringify(DB));setEstado(false);}else{delete r._dirty;LS.setItem(KEY,JSON.stringify(DB));setEstado(true);}}
-/* ---- offline: reintento automático ---- */
+/* ========= SINCRONIZACIÓN SUPABASE (por código de cuadrilla) ========= */
+async function syncRIT(r){if(!sb||!USER||!r.codigo)return;r.updated_at=ahora();
+  const {error}=await sb.rpc("rit_guardar",{p_codigo:r.codigo,p_rit:r});
+  if(error){r._dirty=true;LS.setItem(KEY,JSON.stringify(DB));setEstado(false);}else{delete r._dirty;LS.setItem(KEY,JSON.stringify(DB));setEstado(true);}}
 let PEND_CFG=false;
 function setEstado(ok){const e=document.getElementById("estado");if(!e)return;const n=DB.filter(r=>r._dirty).length;e.textContent=ok&&!n?"":(navigator.onLine?`⟳ ${n} por subir`:`⚠ sin señal · ${n} por subir`);}
-async function reintentar(){if(!sb||!USER||!navigator.onLine)return;for(const r of DB.filter(x=>x._dirty&&(!x.user_id||x.user_id===USER.id)))await syncRIT(r);if(PEND_CFG){PEND_CFG=false;await syncCfg();}setEstado(true);}
+async function reintentar(){if(!sb||!USER||!navigator.onLine)return;for(const r of DB.filter(x=>x._dirty))await syncRIT(r);if(PEND_CFG){PEND_CFG=false;await syncCfg();}setEstado(true);}
 window.addEventListener("online",()=>{toast("Conexión recuperada: subiendo pendientes");reintentar();});
 window.addEventListener("offline",()=>{toast("Sin señal: se guarda en el celular");setEstado(false);});
 setInterval(reintentar,30000);
-async function syncCfg(){if(!sb||!USER)return;const {error}=await sb.from("perfiles").update({cfg:CFG,nombre:USER.nombre,cargo:CFG.cargo||null,codigo:CFG.codigo||null,supervisor_id:CFG.supervisor_id||null,updated_at:ahora()}).eq("id",USER.id);if(error)PEND_CFG=true;}
+async function syncCfg(){if(!sb||!USER||!CFG.codigo)return;const {error}=await sb.rpc("cuadrilla_guardar",{p_codigo:CFG.codigo,p_cfg:{gerencia:CFG.gerencia,sup:CFG.sup,area:CFG.area,supervisor:CFG.supervisor,turno:CFG.turno,cuadrilla:CFG.cuadrilla}});if(error)PEND_CFG=true;}
 async function pullAll(){
-  if(!sb||!USER)return;
-  const {data:perfil}=await sb.from("perfiles").select("*").eq("id",USER.id).maybeSingle();
-  if(perfil){USER.role=perfil.role||"trabajador";USER.nombre=perfil.nombre||USER.nombre;if(perfil.cfg)CFG=Object.assign(CFG,perfil.cfg);CFG.codigo=perfil.codigo||"";CFG.supervisor_id=perfil.supervisor_id||"";CFG.cargo=perfil.cargo||CFG.cargo;}
-  else{await sb.from("perfiles").insert({id:USER.id,email:USER.email,nombre:USER.nombre,role:"trabajador",cfg:CFG,cargo:CFG.cargo||null});}
-  const lider=CFG.codigo?USER.id:CFG.supervisor_id;
-  if(lider){
-    const {data:lp}=await sb.from("perfiles").select("id,nombre,cargo,cfg").eq("id",lider).maybeSingle();
-    const {data:tr}=await sb.from("perfiles").select("id,nombre,cargo,email").eq("supervisor_id",lider);
-    if(lp&&!CFG.codigo){CFG.supervisor_nombre=lp.nombre;const c=lp.cfg||{};CFG.area=c.area||"";CFG.gerencia=c.gerencia||"";CFG.sup=c.sup||"";CFG.turno=c.turno||"A";CFG.supervisor=c.supervisor||lp.nombre;CFG.cuadrilla=(c.cuadrilla||[]).map(p=>({...p}));}
-    const todos=[...(lp?[{id:lp.id,nombre:lp.nombre,cargo:lp.cargo}]:[]),...(tr||[])];
-    todos.forEach(t=>{let p=CFG.cuadrilla.find(x=>x.uid===t.id);if(!p){p=CFG.cuadrilla.find(x=>!x.uid&&x.nombre.toLowerCase()===(t.nombre||"").toLowerCase());if(p)p.uid=t.id;else CFG.cuadrilla.push({id:uid(),uid:t.id,nombre:t.nombre||t.email,cargo:t.cargo||""});}else{p.nombre=t.nombre||p.nombre;p.cargo=t.cargo||p.cargo;}});
-    if(CFG.codigo)syncCfg();
-  }
+  if(!sb||!USER||!CFG.codigo)return;
   await reintentar();
-  const {data:rows,error}=await sb.from("rits").select("id,user_id,email,data,updated_at").order("updated_at",{ascending:false}).limit(2000);
+  const {data:c}=await sb.rpc("cuadrilla_ver",{p_codigo:CFG.codigo});
+  if(c&&c.ok){const k=c.cfg||{};CFG.gerencia=k.gerencia||CFG.gerencia;CFG.sup=k.sup||CFG.sup;CFG.area=k.area||CFG.area;CFG.supervisor=k.supervisor||CFG.supervisor;CFG.turno=k.turno||CFG.turno;
+    const loc=CFG.cuadrilla||[];CFG.cuadrilla=(k.cuadrilla||[]).map(p=>({...p}));loc.forEach(p=>{if(!CFG.cuadrilla.some(q=>q.id===p.id||q.nombre.toLowerCase()===p.nombre.toLowerCase()))CFG.cuadrilla.push(p);});}
+  const {data:rows,error}=await sb.rpc("rit_listar",{p_codigo:CFG.codigo});
   if(error){toast("Sin conexión: trabajando con datos locales");return;}
-  const map=new Map(DB.filter(r=>!r.user_id||r.user_id===USER.id).map(r=>[r.id,r]));
-  rows.forEach(x=>{const r=x.data;r.user_id=x.user_id;r.email=x.email;const loc=map.get(r.id);if(!loc||(x.updated_at>(loc.updated_at||"")))map.set(r.id,r);});
+  const map=new Map(DB.map(r=>[r.id,r]));
+  (rows||[]).forEach(x=>{const r=x.data;const loc=map.get(r.id);if(!loc||(x.updated_at>(loc.updated_at||"")))map.set(r.id,r);});
   DB=[...map.values()].sort((a,b)=>(a.inicioTs||"").localeCompare(b.inicioTs||""));
-  DB.filter(r=>(!r.user_id||r.user_id===USER.id)&&!rows.find(x=>x.id===r.id)).forEach(r=>syncRIT(r));
+  DB.filter(r=>r.codigo===CFG.codigo&&!(rows||[]).find(x=>x.id===r.id)).forEach(r=>syncRIT(r));
   save(false);
 }
-
 async function refrescarRIT(id){
-  if(!sb||!USER)return false;const {data}=await sb.from("rits").select("data,updated_at,user_id,email").eq("id",id).maybeSingle();if(!data)return false;
-  const r=data.data;r.user_id=data.user_id;r.email=data.email;const i=DB.findIndex(x=>x.id===id);
-  if(i<0){DB.push(r);}else{if((DB[i].updated_at||"")>=data.updated_at)return false;DB[i]=r;}
+  if(!sb||!USER)return false;const loc=DB.find(x=>x.id===id);const {data,error}=await sb.rpc("rit_obtener",{p_id:id});if(error||!data||!data.ok)return false;
+  const r=data.rit;const i=DB.findIndex(x=>x.id===id);
+  if(i<0){DB.push(r);}else{if((DB[i].updated_at||"")>=(r.updated_at||""))return false;DB[i]=r;}
   if(R&&R.id===id)R=DB.find(x=>x.id===id);
-  if(isLider()&&r.user_id===USER.id){let n=0;(r.cuadrilla||[]).forEach(p=>{if(!CFG.cuadrilla.some(q=>q.id===p.id||q.nombre.toLowerCase()===p.nombre.toLowerCase())){CFG.cuadrilla.push({...p});n++;}});if(n){LS.setItem(KEYC,JSON.stringify(CFG));syncCfg();}}
+  if(isLider()){let n=0;(r.cuadrilla||[]).forEach(p=>{if(!CFG.cuadrilla.some(q=>q.id===p.id||q.nombre.toLowerCase()===p.nombre.toLowerCase())){CFG.cuadrilla.push({...p});n++;}});if(n){LS.setItem(KEYC,JSON.stringify(CFG));syncCfg();}}
   save(false);return true;
+}
+async function rpcTrab(fn,args){return true;}
+async function crearCuadrilla(){
+  const d=document.getElementById("lA")?{area:lA.value.trim(),gerencia:lG.value.trim(),sup:lS.value.trim(),turno:lT.value}:{};
+  CFG.codigo=genCodigo();Object.assign(CFG,d);CFG.supervisor=CFG.supervisor||USER.nombre;
+  if(!CFG.cuadrilla.some(p=>p.nombre.toLowerCase()===USER.nombre.toLowerCase()))CFG.cuadrilla.unshift({id:uid(),nombre:USER.nombre,cargo:USER.cargo||""});
+  save(false);
+  if(sb){const {data,error}=await sb.rpc("cuadrilla_crear",{p_codigo:CFG.codigo,p_lider:USER.nombre,p_cfg:{gerencia:CFG.gerencia,sup:CFG.sup,area:CFG.area,supervisor:CFG.supervisor,turno:CFG.turno,cuadrilla:CFG.cuadrilla}});if(error){toast("No se pudo crear en la nube: "+error.message);}}
+  closeModal();entrar();modalCuadrilla(true);
 }
 /* acciones del trabajador: pasan por RPC; si no hay señal quedan en cola */
 let COLA=JSON.parse(LS.getItem("rit9.cola")||"[]");
@@ -252,11 +250,7 @@ async function confirmarControl(aid,j,c){
   if(sb){await rpcTrab("rit_confirmar_control",{p_rit:r.id,p_act:aid,p_j:j,p_c:c,p_valor:k.confirmado});await refrescarRIT(r.id);}else{r.updated_at=ahora();save(false);}
   render();
 }
-async function crearCuadrilla(){if(CFG.supervisor_id){if(!confirm("Dejarás la cuadrilla de "+CFG.supervisor_nombre+" para crear la tuya. ¿Seguir?"))return;CFG.supervisor_id="";CFG.supervisor_nombre="";}
-  CFG.codigo=genCodigo();CFG.supervisor=CFG.supervisor||USER.nombre;if(!CFG.cuadrilla.some(p=>p.uid===USER.id))CFG.cuadrilla.unshift({id:uid(),uid:USER.id,nombre:USER.nombre,cargo:CFG.cargo||""});
-  save(false);if(sb){await sb.from("perfiles").update({codigo:CFG.codigo,supervisor_id:null,cfg:CFG,updated_at:ahora()}).eq("id",USER.id);}
-  closeModal();modalCuadrilla(true);}
-const ritDeHoyTrab=()=>DB.filter(r=>r.fecha===today()&&(r.cuadrilla||[]).some(p=>p.uid===USER.id)).sort((a,b)=>(b.inicioTs||"").localeCompare(a.inicioTs||""))[0];
+const ritDeHoyTrab=()=>DB.filter(r=>r.fecha===today()&&r.codigo===CFG.codigo).sort((a,b)=>(b.inicioTs||"").localeCompare(a.inicioTs||""))[0];
 
 /* ========= ASISTENTE SIN CUENTA ========= */
 let ASIS=JSON.parse(LS.getItem("rit.asis")||"null");   // {codigo,nombre,cargo}
@@ -303,52 +297,44 @@ function pAsis(){
 function modalNoCondAnon(){openModal(`<h3>⚠️ No estoy en condiciones</h3><label>¿Qué te pasa? (lo verá quien registra la RIT)</label><textarea id="nM" placeholder="Ej: malestar, fatiga, dolor…"></textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=nM.value.trim();if(!m){toast('Indica el motivo');return;}closeModal();asistir(false,m)">Enviar</button></div>`);}
 setInterval(()=>{if(view==="asis"&&ASIS)cargarAsis();},10000);
 
-/* ========= LOGIN ========= */
+/* ========= ENTRADA ========= */
 function pLogin(){
-  const main=document.getElementById("main");
-  if(!sb){
-    const prev=JSON.parse(LS.getItem(KEYU)||"null");
-    const yo0=JSON.parse(LS.getItem("rit.asis")||"{}");
-    main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Sin cuenta: código de la cuadrilla y tu nombre.</p><label>Código</label><input id="aC" value="${esc(yo0.codigo||Q.get("codigo")||"")}" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p big w" onclick="irAsistente()">Continuar</button></div><div class="login"><h2>¿Quién eres?</h2><p>Modo local (sin Supabase configurado): solo se registra tu nombre para las firmas y el reporte.</p>
-     <label>Nombre</label><input id="lN" value="${esc(prev?prev.nombre:CFG.supervisor)}"><button class="btn p w" onclick="const n=lN.value.trim();if(!n){toast('Escribe tu nombre');return;}USER={id:'local',email:'',nombre:n,role:'admin'};LS.setItem(KEYU,JSON.stringify(USER));CFG.supervisor=CFG.supervisor||n;save(false);entrar()">Entrar</button></div>`;
-    return;
-  }
-  const yo=JSON.parse(LS.getItem("rit.asis")||"{}");
-  main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Sin cuenta. Ingresa el código de tu cuadrilla y tu nombre: quedas en la lista de asistencia.</p>
+  const main=document.getElementById("main");const yo=JSON.parse(LS.getItem("rit.asis")||"{}");const prev=JSON.parse(LS.getItem(KEYU)||"null")||{};
+  main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Código de la cuadrilla y tu nombre: quedas en la lista de asistencia.</p>
    <label>Código de cuadrilla</label><input id="aC" value="${esc(yo.codigo||Q.get("codigo")||"")}" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123">
    <button class="btn p big w" onclick="irAsistente()">Continuar</button></div>
-  <div class="login"><h2>Lidero la RIT</h2><p>Con cuenta: quien crea la cuadrilla, registra la RIT del día y firma.</p>
-   <label>Correo</label><input id="lE" type="email" autocomplete="username" placeholder="nombre@codelco.cl"><label>Contraseña</label><input id="lP" type="password" autocomplete="current-password">
-   <button class="btn p w" onclick="login()">Entrar</button>
-   <button class="btn s sm w" onclick="registro()">Crear cuenta nueva</button>
-   <div id="lMsg" class="info hid"></div></div>`;
+  <div class="login" style="border-top:5px solid var(--turquesa)"><h2>Soy líder de la reunión</h2><p>Registro la RIT del día de mi cuadrilla.</p>
+   <label>Nombre y apellido</label><input id="lN" value="${esc(prev.nombre||"")}" placeholder="Ej: Rodrigo Castillo"><label>Cargo / empresa</label><input id="lR" value="${esc(prev.cargo||"")}" placeholder="Ej: Supervisor · Codelco">
+   <button class="btn t w" onclick="entrarLider()">Entrar</button></div>`;
 }
+function setUser(){const n=lN.value.trim(),c=lR.value.trim();if(n.split(" ").length<2){toast("Escribe nombre y apellido");return false;}
+  const prev=JSON.parse(LS.getItem(KEYU)||"null")||{};USER={id:prev.id||uid(),nombre:n,cargo:c,role:"trabajador"};LS.setItem(KEYU,JSON.stringify(USER));return true;}
+async function entrarLider(){if(!setUser())return;entrar();}
+function modalCodigo(){openModal(`<h3>Ingresar código de mi cuadrilla</h3><label>Código (6 letras/números)</label><input id="uC" style="text-transform:uppercase;letter-spacing:.15em;font-size:24px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p w" onclick="CFG={gerencia:'',sup:'',area:'',supervisor:'',turno:'A',cuadrilla:[],codigo:''};unirse()">Entrar a la cuadrilla</button><button class="btn s sm w" onclick="closeModal();modalBuscar()">Olvidé el código</button><button class="btn d w" onclick="closeModal()">Cancelar</button>`);setTimeout(()=>uC.focus(),50);}
+function modalBuscar(){openModal(`<h3>Buscar mi cuadrilla</h3><p style="font-size:13px;color:var(--muted);margin:0 0 6px">Escribe el nombre del líder, el área o el supervisor.</p><input id="bQ" placeholder="Ej: Castillo / Techumbres / LR" oninput="buscarCuad()"><div id="bRes" style="margin-top:10px"></div><button class="btn s w" onclick="closeModal()">Cerrar</button>`);setTimeout(()=>bQ.focus(),50);}
+let bT=null;function buscarCuad(){clearTimeout(bT);bT=setTimeout(async()=>{const q=bQ.value.trim();if(q.length<2){bRes.innerHTML="";return;}let res=[];
+  if(sb){const {data}=await sb.rpc("cuadrilla_buscar",{p_texto:q});res=data||[];}
+  else{const seen={};DB.forEach(r=>{if(r.codigo&&!seen[r.codigo]&&[r.supervisor,r.area,r.registra].some(x=>(x||"").toLowerCase().includes(q.toLowerCase()))){seen[r.codigo]=1;res.push({codigo:r.codigo,lider:r.registra,area:r.area,supervisor:r.supervisor});}});}
+  bRes.innerHTML=res.map(c=>`<div class="persona" onclick="closeModal();CFG={gerencia:'',sup:'',area:'',supervisor:'',turno:'A',cuadrilla:[],codigo:''};document.body.insertAdjacentHTML('beforeend','<input id=uC class=hid value=${c.codigo}>');unirse().then(()=>document.getElementById('uC')?.remove())"><div class="av" style="background:var(--dorado);color:var(--pizarra);font-size:11px">${esc(c.codigo)}</div><div class="nm">${esc(c.area||"(sin área)")}<small>líder ${esc(c.lider||"")} · supervisor ${esc(c.supervisor||"")}</small></div></div>`).join("")||`<div class="empty">Sin resultados.</div>`;},300);}
+function nuevaCuadrillaDesdeLogin(){
+  openModal(`<h3>Nueva cuadrilla</h3><div class="row"><div><label>Gerencia</label><input id="lG" placeholder="GOP"></div><div><label>Superintendencia / EE.CC.</label><input id="lS" placeholder="SINFRA"></div></div>
+   <label>Área / frente de trabajo</label><input id="lA" placeholder="Ej: Techumbres Planta LR"><label>Turno</label><select id="lT">${TURNOS.map(t=>`<option>${t}</option>`).join("")}</select>
+   <div class="info">Recibirás un código de 6 letras para que los asistentes marquen su asistencia.</div>
+   <div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn p" onclick="CFG={gerencia:'',sup:'',area:'',supervisor:'',turno:'A',cuadrilla:[],codigo:''};crearCuadrilla()">Crear</button></div>`);}
+function borrarLocal(){if(!confirm("Se borra todo lo guardado en este celular (RIT, cuadrilla, nombre). Lo que ya se subió a la nube se conserva. ¿Continuar?"))return;[KEY,KEYC,KEYU,"rit.asis","rit9.cola"].forEach(k=>LS.removeItem(k));location.reload();}
+async function reiniciarTodo(){if(!confirm("REINICIAR APP: se borran TODAS las RIT y cuadrillas de TODOS los celulares (nube incluida). ¿Seguro?"))return;const k=prompt("Escribe la clave del repositorio para confirmar:");if(!k)return;
+  if(sb){const {data,error}=await sb.rpc("rit_reiniciar",{p_clave:k});if(error||!data){toast("No se pudo: "+(error?error.message:"clave incorrecta"));return;}}else if(k!==CLAVE_LOCAL){toast("Clave incorrecta");return;}
+  [KEY,KEYC,KEYU,"rit.asis","rit9.cola"].forEach(x=>LS.removeItem(x));alert("Listo: la app quedó en cero.");location.reload();}
+async function salir(){USER=null;LS.removeItem(KEYU);R=null;view="login";render();}
+function entrar(){LS.setItem(KEYU,JSON.stringify(Object.assign(USER,{codigo:CFG.codigo})));view="home";render();if(sb){pullAll().then(()=>render());iniciarPolling();}}
+let pollT=null;function iniciarPolling(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{const r=(R&&!R.cerrada&&view==="rit")?R:ritDeHoyTrab();if(!r)return;if(await refrescarRIT(r.id)){if(view==="home"||view==="rit")render();}},8000);}
 function modalRepo(){openModal(`<h3>🗂 Repositorio · Dashboard</h3><p style="font-size:13px;color:var(--muted);margin:0 0 6px">Acceso de supervisión. Ingresa la clave.</p><label>Clave</label><input id="rK" type="password" autocomplete="off"><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn t" onclick="entrarRepo()">Entrar</button></div><div id="rMsg" class="info warn hid"></div>`);setTimeout(()=>document.getElementById("rK").focus(),50);}
 async function entrarRepo(){const k=(document.getElementById("rK").value||"").trim();if(!k){toast("Escribe la clave");return;}
   if(!sb){if(k!==CLAVE_LOCAL){toast("Clave incorrecta");return;}USER.role="admin";closeModal();setView("repo");return;}
   const {data,error}=await sb.rpc("rit_repositorio",{p_clave:k});
-  if(error||!data){const m=document.getElementById("rMsg");m.classList.remove("hid");m.textContent=error?"Error: "+error.message:"Clave incorrecta";return;}
-  const map=new Map(DB.map(r=>[r.id,r]));data.forEach(x=>{const r=x.data;r.user_id=x.user_id;r.email=x.email;const loc=map.get(r.id);if(!loc||(x.updated_at>(loc.updated_at||"")))map.set(r.id,r);});
+  if(error||!data||!data.length&&!(await sb.rpc("rit_repositorio",{p_clave:k})).data){const m=document.getElementById("rMsg");m.classList.remove("hid");m.textContent=error?"Error: "+error.message:"Clave incorrecta (o aún no hay RIT)";if(error||!data)return;}
+  const map=new Map(DB.map(r=>[r.id,r]));(data||[]).forEach(x=>{const r=x.data;const loc=map.get(r.id);if(!loc||(x.updated_at>(loc.updated_at||"")))map.set(r.id,r);});
   DB=[...map.values()].sort((a,b)=>(a.inicioTs||"").localeCompare(b.inicioTs||""));USER.role="admin";closeModal();setView("repo");}
-async function login(){const e=lE.value.trim().toLowerCase(),p=lP.value;if(!e||!p){toast("Correo y contraseña");return;}
-  let {data,error}=await sb.auth.signInWithPassword({email:e,password:p});
-  if(error){await sb.rpc("rit_confirmar_cuenta",{p_email:e});({data,error}=await sb.auth.signInWithPassword({email:e,password:p}));}
-  if(error){lMsg.classList.remove("hid");lMsg.textContent=/invalid/i.test(error.message)?"Correo o contraseña incorrectos.":"No se pudo entrar: "+error.message;return;}
-  await sesionDesde(data.user);}
-function registro(){openModal(`<h3>Crear cuenta</h3><label>Nombre y apellido</label><input id="rN" placeholder="Como aparecerá en las RIT"><label>Cargo</label><input id="rC" placeholder="Ej: Maestro techumbres"><label>Correo</label><input id="rE" type="email"><label>Contraseña (mín. 6)</label><input id="rP" type="password">
-   <div class="info">Después de entrar podrás <b>crear una cuadrilla</b> o <b>unirte a una</b> con el código de quien la creó. Cualquier integrante puede registrar la RIT del día.</div>
-   <button class="btn p w" onclick="crearCuenta()">Crear cuenta</button><button class="btn s sm w" onclick="closeModal()">Cancelar</button>`);}
-async function crearCuenta(){const n=rN.value.trim(),c=rC.value.trim(),e=rE.value.trim().toLowerCase(),p=rP.value;if(!n||!e||p.length<6){toast("Completa los datos (contraseña mín. 6)");return;}
-  const {data:r,error}=await sb.rpc("rit_crear_cuenta",{p_email:e,p_password:p,p_nombre:n,p_cargo:c});
-  if(error){toast("No se pudo crear: "+error.message);return;}
-  if(!r||!r.ok){toast(r&&r.msg==="existe"?"Ese correo ya tiene cuenta: usa Entrar":"No se pudo crear la cuenta");return;}
-  const {data,error:e2}=await sb.auth.signInWithPassword({email:e,password:p});
-  if(e2){toast("Cuenta creada, pero no se pudo entrar: "+e2.message);return;}
-  closeModal();await sesionDesde(data.user);}
-async function sesionDesde(u){const md=u.user_metadata||{};USER={id:u.id,email:u.email,nombre:md.nombre||u.email.split("@")[0],role:"trabajador"};if(md.cargo&&!CFG.cargo)CFG.cargo=md.cargo;await pullAll();entrar();}
-async function salir(){if(sb)await sb.auth.signOut();USER=null;LS.removeItem(KEYU);R=null;view="login";render();}
-function entrar(){view="home";render();if(sb)iniciarPolling();}
-let pollT=null;function iniciarPolling(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{const r=(R&&!R.cerrada&&view==="rit")?R:ritDeHoyTrab();if(!r)return;if(await refrescarRIT(r.id)){if(view==="home"||view==="rit")render();}},8000);}
 
 /* ========= RENDER ========= */
 function render(){
@@ -357,12 +343,12 @@ function render(){
   document.getElementById("prog").classList.toggle("hid",!enRit);
   const tm=document.getElementById("timer");tm.classList.toggle("hid",!(enRit&&!R.cerrada));
   if(enRit&&!R.cerrada){const sg=segundos(R);tm.textContent=`⏱ ${mmss(sg)}`;tm.classList.toggle("over",sg>MAX_MIN*60);}
-  document.getElementById("who").textContent=USER?USER.nombre.split(" ")[0]+(isAdmin()?" · admin":isLider()?" · líder":""):"";
+  document.getElementById("who").textContent=USER?USER.nombre.split(" ")[0]+(isAdmin()?" · admin":CFG.codigo?" · "+CFG.codigo:""):"";
   document.getElementById("repoBtn").classList.toggle("hid",!USER||view==="login"||view==="asis"||view==="repo"||view==="rep");
   const main=document.getElementById("main");
   if(view==="login"){pLogin();return;}
   if(view==="asis"){main.innerHTML=pAsis();return;}
-  if(view==="home"){const r0=ritDeHoyTrab();main.innerHTML=(isTrab()||(isLider()&&r0&&r0.user_id!==USER.id&&!r0.cerrada))?homeTrab():home();return;}
+  if(view==="home"){main.innerHTML=home();return;}
   if(view==="resumen"){main.innerHTML=pResumen();return;}
   if(view==="repo"){main.innerHTML=repositorio();return;}
   if(view==="rep"){main.innerHTML=reporte();return;}
@@ -390,33 +376,32 @@ function go(d){
   if(d>0&&S[step]==="asist"&&!R.asistentes.length){toast("Marca al menos un asistente");return;}
   step=Math.max(0,Math.min(S.length-1,step+d));render();window.scrollTo(0,0);
 }
-async function eliminarRIT(id){const r=DB.find(x=>x.id===id);if(!r)return;if(!(isAdmin()||!r.user_id||r.user_id===USER.id)){toast("Solo quien la registró o administración puede eliminarla");return;}
+async function eliminarRIT(id){const r=DB.find(x=>x.id===id);if(!r)return;if(!(isAdmin()||r.codigo===CFG.codigo)){toast("No puedes eliminar RIT de otra cuadrilla");return;}
   if(!confirm(`¿Eliminar la RIT del ${fmt(r.fecha)}? Esta acción no se puede deshacer.`))return;
-  if(sb&&USER){const {error}=await sb.from("rits").delete().eq("id",id);if(error){toast("No se pudo eliminar: "+error.message);return;}}
+  if(sb&&USER){const {error}=await sb.rpc("rit_eliminar",{p_id:id,p_codigo:r.codigo||CFG.codigo});if(error){toast("No se pudo eliminar: "+error.message);return;}}
   DB=DB.filter(x=>x.id!==id);if(R&&R.id===id)R=null;save(false);toast("RIT eliminada");setView("home");}
 function abrir(id){R=DB.find(r=>r.id===id);if(R.cerrada){setView("resumen");}else{step=0;setView("rit");}}
 function detalles(){step=STEPS().length-1;setView("rit");}
 function iniciarHoy(nueva){
-  let r=nueva?null:DB.find(x=>x.fecha===today()&&!x.cerrada&&mine(x));
-  if(r&&r.user_id&&r.user_id!==USER.id){toast("La RIT de hoy la está registrando "+(r.registra||r.supervisor));setView("home");return;}
-  if(!r){if(!CFG.cuadrilla.length){if(isLider())modalCuadrilla(true);else toast("La cuadrilla aún no tiene integrantes");return;}r=nuevaRIT();if(!r.cuadrilla.some(p=>p.uid===USER.id))r.cuadrilla.unshift({id:uid(),uid:USER.id,nombre:USER.nombre,cargo:CFG.cargo||""});r.cuadrilla_ids=r.cuadrilla.map(p=>p.uid).filter(Boolean);const hechos=DB.filter(mine).slice(-6).map(x=>x.dirige);r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||"";DB.push(r);R=r;save();}
+  let r=nueva?null:DB.filter(x=>x.fecha===today()&&!x.cerrada&&x.codigo===CFG.codigo).sort((a,b)=>(b.inicioTs||"").localeCompare(a.inicioTs||""))[0];
+  if(!r){if(!CFG.cuadrilla.length){modalCuadrilla(true);return;}r=nuevaRIT();const hechos=DB.filter(x=>x.codigo===CFG.codigo).slice(-6).map(x=>x.dirige);r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||"";DB.push(r);R=r;save();}
   R=r;step=0;setView("rit");
 }
 
 /* ========= INICIO ========= */
 function home(){
-  const mias=DB.filter(mine),hoy=mias.filter(x=>x.fecha===today()).sort((a,b)=>(a.cerrada?1:0)-(b.cerrada?1:0)||(b.inicioTs||"").localeCompare(a.inicioTs||""))[0],pasadas=[...mias].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30),p=pend();
+  const mias=DB.filter(r=>r.codigo===CFG.codigo),hoy=mias.filter(x=>x.fecha===today()).sort((a,b)=>(a.cerrada?1:0)-(b.cerrada?1:0)||(b.inicioTs||"").localeCompare(a.inicioTs||""))[0],pasadas=[...mias].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30),p=pend();
   return `<div class="hoy"><h2>HOY</h2><div class="f">${fmt(today())}</div>
-   ${!isAdmin()&&!CFG.codigo&&!CFG.supervisor_id?`<p>Para empezar: crea la cuadrilla (serás su líder y tendrás un código para invitar) o únete a una existente.</p><button class="btn p big w" onclick="crearCuadrilla()">Crear mi cuadrilla</button><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalUnirse()">Unirme con un código</button>`:
+   ${!CFG.codigo?`<p>Hola ${esc(USER.nombre.split(" ")[0])}. ¿Tu cuadrilla ya tiene código?</p><button class="btn p big w" onclick="modalCodigo()">Ingresar código de mi cuadrilla</button><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="nuevaCuadrillaDesdeLogin()">Crear cuadrilla nueva</button><button class="btn d w" style="color:rgba(255,255,255,.6)" onclick="modalBuscar()">Olvidé el código</button>`:
      !CFG.cuadrilla.length?`<p>Primero arma tu cuadrilla y datos del área (una sola vez).</p><button class="btn p big w" onclick="modalCuadrilla(true)">Configurar cuadrilla</button>`:
      hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada · ${mmss(segundos(hoy))} · dirigió ${esc(hoy.dirige)}</p><div class="row"><button class="btn s" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button><button class="btn p" onclick="iniciarHoy(true)">+ Nueva RIT hoy</button></div>`:
        `<div class="clock ${segundos(hoy)>MAX_MIN*60?"over":""}" id="homeClock">⏱ ${mmss(segundos(hoy))}</div><p>RIT en curso · dirige ${esc(hoy.dirige)||"—"} · ${hoy.asistentes.length} presentes</p><button class="btn p big w" onclick="iniciarHoy()">▶ Continuar RIT de hoy</button>`):
      `<p>${esc(CFG.area||"Área sin definir")} · turno ${esc(CFG.turno)} · ${CFG.cuadrilla.length} en cuadrilla · ${esc(CFG.supervisor||"—")}</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy</button>`}
    ${CFG.codigo?`<div style="margin-top:8px;background:rgba(255,255,255,.08);border-radius:10px;padding:8px;text-align:center"><div style="font-size:11px;opacity:.75;letter-spacing:.05em">CÓDIGO DE TU CUADRILLA</div><div style="font-size:36px;font-weight:800;letter-spacing:.18em;color:var(--dorado)">${CFG.codigo}</div><div style="font-size:12px;opacity:.75">Los asistentes lo escriben con su nombre y quedan en la lista</div></div>`:""}
-   <div class="row" style="margin-top:10px"><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalCuadrilla()">👥 Cuadrilla y datos</button>${isAdmin()?`<button class="btn s sm" style="background:var(--dorado);color:var(--pizarra);border:none" onclick="setView('repo')">🗂 Repositorio · Dashboard</button>`:`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="setView('rep')">📊 Mi reporte</button>`}</div>
-   <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="salir()">Cerrar sesión</button></div></div>
+   ${CFG.codigo?`<div class="row" style="margin-top:10px"><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalCuadrilla()">👥 Cuadrilla y datos</button>${isAdmin()?`<button class="btn s sm" style="background:var(--dorado);color:var(--pizarra);border:none" onclick="setView('repo')">🗂 Repositorio · Dashboard</button>`:`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="setView('rep')">📊 Reporte cuadrilla</button>`}</div>`:""}
+   <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="salir()">Salir</button></div></div>
   ${p.length?`<div class="card"><h2>Aportes pendientes del turno anterior <span class="tag no">${p.length}</span></h2>${p.map(a=>`<div class="ritrow"><div class="nm">${esc(a.prop)}<small>${esc(a.resp)} · compromiso ${a.fecha||"s/f"}</small></div><button class="btn t sm" onclick="cumplir('${a.ritId}','${esc(a.prop)}')">Cumplido</button></div>`).join("")}</div>`:""}
-  <div class="card"><h2>Mis RIT anteriores</h2>${pasadas.map(filaRIT).join("")||`<div class="empty">Aquí irán apareciendo las RIT de cada día.</div>`}</div>`;
+  <div class="card"><h2>RIT anteriores de la cuadrilla</h2>${pasadas.map(filaRIT).join("")||`<div class="empty">Aquí irán apareciendo las RIT de cada día.</div>`}</div>`;
 }
 function filaRIT(x,conUser){return `<div class="ritrow" onclick="abrir('${x.id}')" style="cursor:pointer"><div class="nm"><b>${fmt(x.fecha)}</b> <span class="tag">Turno ${esc(x.turno||"")}</span>${x.ultimo?' <span class="tag" style="background:#FDF1D7;color:#8A5E00">último día</span>':""}${conUser?` <span class="userchip">${esc(x.supervisor||x.email||"")}</span>`:""}<small>${x.cerrada?"✓ cerrada · "+mmss(segundos(x)):"⚠️ sin cerrar"} · dirigió ${esc(x.dirige)||"—"} · ${x.asistentes.length} asist. · ${rfsDe(x).join(" ")||"sin RF"}${tvs(x).length?" · 🟩 "+tvs(x).length+" TV":""}${conUser?" · "+esc(x.area||""):""}</small></div><span style="color:var(--muted)">›</span></div>`;}
 const rfsDe=r=>[...new Set(r.acts.flatMap(a=>a.rfs.map(s=>s.rf)).filter(Boolean))];
@@ -453,10 +438,11 @@ function homeTrab(){
 }
 function modalNoCond(){openModal(`<h3>⚠️ No estoy en condiciones</h3><label>¿Qué te pasa? (lo verá tu supervisor)</label><textarea id="nM" placeholder="Ej: malestar, fatiga, dolor…"></textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=nM.value.trim();if(!m){toast('Indica el motivo');return;}closeModal();marcarMiAsistencia(false,m)">Enviar</button></div>`);}
 function modalUnirse(){openModal(`<h3>Unirme a mi cuadrilla</h3><p style="font-size:13px;color:var(--muted)">Pídele a tu supervisor el código de 6 letras que aparece en su app.</p><label>Código de cuadrilla</label><input id="uC" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p w" onclick="unirse()">Unirme</button><button class="btn s sm w" onclick="closeModal()">Cancelar</button>`);setTimeout(()=>uC.focus(),50);}
-async function unirse(){const code=uC.value.trim().toUpperCase();if(code.length<4){toast("Código incompleto");return;}
-  if(sb){const {data,error}=await sb.rpc("rit_unirse_cuadrilla",{p_codigo:code});if(error||!data){toast("Código no encontrado");return;}CFG.supervisor_id=data.supervisor_id;CFG.supervisor_nombre=data.nombre;CFG.area=data.area||"";CFG.codigo="";CFG.cuadrilla=[];await sb.from("perfiles").update({codigo:null,supervisor_id:CFG.supervisor_id,cfg:CFG,updated_at:ahora()}).eq("id",USER.id);await pullAll();}
-  else{CFG.supervisor_nombre="(modo local)";}
-  save(false);closeModal();render();toast("Te uniste a la cuadrilla de "+(CFG.supervisor_nombre||""));}
+async function unirse(){const code=(document.getElementById("uC")?.value||document.getElementById("lC")?.value||"").trim().toUpperCase();if(code.length<4){toast("Código incompleto");return;}
+  if(sb){const {data,error}=await sb.rpc("cuadrilla_ver",{p_codigo:code});if(error||!data||!data.ok){toast("Código no encontrado");return;}CFG.codigo=code;const k=data.cfg||{};Object.assign(CFG,{gerencia:k.gerencia||"",sup:k.sup||"",area:k.area||"",supervisor:k.supervisor||"",turno:k.turno||"A",cuadrilla:(k.cuadrilla||[]).map(p=>({...p}))});}
+  else{const r=DB.find(x=>x.codigo===code);if(!r){toast("Código no encontrado");return;}CFG.codigo=code;Object.assign(CFG,{area:r.area,gerencia:r.gerencia,sup:r.sup,supervisor:r.supervisor,turno:r.turno,cuadrilla:(r.cuadrilla||[]).map(p=>({...p}))});}
+  if(!CFG.cuadrilla.some(p=>p.nombre.toLowerCase()===USER.nombre.toLowerCase())){CFG.cuadrilla.push({id:uid(),nombre:USER.nombre,cargo:USER.cargo||""});syncCfg();}
+  save(false);closeModal();entrar();toast("Entraste a la cuadrilla "+code);}
 function modalPerfilTrab(){openModal(`<h3>Mi perfil</h3><label>Nombre</label><input id="pN" value="${esc(USER.nombre)}"><label>Cargo / empresa</label><input id="pC" value="${esc(CFG.cargo||"")}"><div class="info">Cuadrilla: ${esc(CFG.supervisor_nombre||"—")} · ${esc(CFG.area||"")}</div><button class="btn s sm w" onclick="closeModal();modalUnirse()">Cambiar de cuadrilla</button><button class="btn s sm w" onclick="crearCuadrilla()">Crear mi propia cuadrilla</button><button class="btn p w" onclick="USER.nombre=pN.value.trim()||USER.nombre;CFG.cargo=pC.value.trim();LS.setItem(KEYU,JSON.stringify(USER));save(false);syncCfg();closeModal();render()">Guardar</button>`);}
 
 /* ========= RESUMEN (RIT cerrada) ========= */
@@ -475,19 +461,19 @@ function modalCuadrilla(first){
    <div class="row"><div><label>Gerencia</label><input id="cG" value="${esc(CFG.gerencia)}" placeholder="GOP"></div><div><label>Superintendencia / EE.CC.</label><input id="cS" value="${esc(CFG.sup)}" placeholder="SINFRA"></div></div>
    <label>Área / frente de trabajo</label><input id="cA" value="${esc(CFG.area)}" placeholder="Ej: Techumbres Planta LR">
    <div class="row"><div><label>Supervisor responsable (firma)</label><input id="cP" value="${esc(CFG.supervisor||(USER?USER.nombre:""))}"></div><div><label>Turno</label><select id="cT">${TURNOS.map(t=>`<option ${t===CFG.turno?"selected":""}>${t}</option>`).join("")}</select></div></div>
-   ${CFG.codigo?`<div class="info"><b>Código de cuadrilla: ${CFG.codigo}</b> · quien lo ingrese en su app queda en tu cuadrilla y marca su propia asistencia.</div>`:""}
-   <label>Integrantes (los que ingresan tu código aparecen solos; agrega a mano a quien no use la app)</label><div id="cuadL">${cuadHTML()}</div>
+   ${CFG.codigo?`<div class="info"><b>Código de cuadrilla: ${CFG.codigo}</b> · los asistentes lo ingresan con su nombre y quedan en la lista.</div>`:""}
+   <label>Integrantes (quien marque asistencia con el código aparece solo; agrega a mano a quien no use la app)</label><div id="cuadL">${cuadHTML()}</div>
    <div class="row" style="margin-top:6px"><input id="cN" placeholder="Nombre"><input id="cC" placeholder="Cargo / empresa"></div>
-   <button class="btn s sm w" onclick="addCuad()">+ Agregar integrante</button><button class="btn p w" onclick="guardarCfg()">Guardar</button>`);
+   <button class="btn s sm w" onclick="addCuad()">+ Agregar integrante</button><button class="btn p w" onclick="guardarCfg()">Guardar</button><button class="btn d w" onclick="if(confirm('¿Salir de esta cuadrilla en este celular? (no se borra nada en la nube)')){CFG={gerencia:'',sup:'',area:'',supervisor:'',turno:'A',cuadrilla:[],codigo:''};save(false);closeModal();render();}">Cambiar de cuadrilla</button><button class="btn d w" onclick="borrarLocal()">Borrar datos de este celular</button>`);
 }
-function cuadHTML(){return CFG.cuadrilla.map(p=>`<div class="persona"><div class="av" ${p.uid?'style="background:var(--turquesa)"':""}>${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${p.uid?' · <span style="color:var(--turquesa)">📱 con app</span>':' · sin app (lo marcas tú)'}</small></div>${p.uid?"":`<button class="btn d" onclick="delCuad('${p.id}')">✕</button>`}</div>`).join("")||`<div class="empty">Sin integrantes aún. Comparte tu código para que se unan, o agrégalos a mano.</div>`;}
+function cuadHTML(){return CFG.cuadrilla.map(p=>`<div class="persona"><div class="av" ${p.uid?'style="background:var(--turquesa)"':""}>${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}</small></div><button class="btn d" onclick="delCuad('${p.id}')">✕</button></div>`).join("")||`<div class="empty">Sin integrantes aún. Comparte tu código para que se unan, o agrégalos a mano.</div>`;}
 function addCuad(){const n=document.getElementById("cN").value.trim();if(!n)return;CFG.cuadrilla.push({id:uid(),nombre:n,cargo:document.getElementById("cC").value.trim()});save(false);document.getElementById("cuadL").innerHTML=cuadHTML();cN.value="";cC.value="";cN.focus();}
 function delCuad(id){CFG.cuadrilla=CFG.cuadrilla.filter(p=>p.id!==id);save(false);document.getElementById("cuadL").innerHTML=cuadHTML();}
 function guardarCfg(){const g=i=>document.getElementById(i).value.trim();Object.assign(CFG,{gerencia:g("cG"),sup:g("cS"),area:g("cA"),supervisor:g("cP"),turno:g("cT")});if(R&&!R.cerrada){R.cuadrilla=CFG.cuadrilla.map(p=>({...p}));Object.assign(R,{supervisor:CFG.supervisor,area:CFG.area,turno:CFG.turno,gerencia:CFG.gerencia,sup:CFG.sup});}save();closeModal();render();}
 
 /* ========= PASOS ========= */
 function pDirige(){
-  const hechos=DB.filter(x=>x.id!==R.id&&mine(x)).slice(-6).map(x=>x.dirige);
+  const hechos=DB.filter(x=>x.id!==R.id&&x.codigo===CFG.codigo).slice(-6).map(x=>x.dirige);
   return `<div class="q">¿Quién dirige la reunión hoy?</div>
    ${cuad().map(p=>`<div class="persona ${R.dirige===p.nombre?"sel":""}" onclick="R.dirige='${esc(p.nombre)}';save();render()"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${hechos.includes(p.nombre)?" · ya dirigió hace poco":""}</small></div>${R.dirige===p.nombre?"✓":""}</div>`).join("")}
    <div class="toggle ${R.ultimo?"on":""}" onclick="R.ultimo=!R.ultimo;save();render()"><div class="sw"></div><span><b>Hoy es el último día del turno</b><br><small style="color:var(--muted)">Se agrega el paso de aportes y reconocimiento</small></span></div>
@@ -582,14 +568,15 @@ function repositorio(){
    <div><label>Desde</label><input type="date" value="${REPO_F.desde}" oninput="REPO_F.desde=this.value;render()"></div><div><label>Hasta</label><input type="date" value="${REPO_F.hasta}" oninput="REPO_F.hasta=this.value;render()"></div></div>
    <div style="font-size:13px;color:var(--muted)">${all.length} RIT · ${new Set(all.map(r=>r.user_id||r.email)).size} supervisores · ${all.filter(r=>!r.cerrada).length} sin cerrar</div></div>
    <div class="card">${all.map(r=>filaRIT(r,true)).join("")||`<div class="empty">Sin RIT con esos filtros.</div>`}</div>
-   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="exportar(filtrar(DB))">Exportar JSON (filtrado)</button><button class="btn s sm w" onclick="exportarCSV(filtrar(DB))">Exportar CSV</button></div>`;
+   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="exportar(filtrar(DB))">Exportar JSON (filtrado)</button><button class="btn s sm w" onclick="exportarCSV(filtrar(DB))">Exportar CSV</button></div>
+   <div class="card noprint" style="border:1.5px solid #FBE9E8"><h2 style="color:var(--rojo)">Zona de peligro</h2><button class="btn r w" style="margin:0" onclick="reiniciarTodo()">🗑 Reiniciar app · borrar todas las RIT y cuadrillas</button><div class="info">Para partir de cero en pruebas. Pide la clave del repositorio.</div></div>`;
 }
 function exportar(list){const b=new Blob([JSON.stringify(list,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="RIT_"+today()+".json";a.click();}
 function exportarCSV(list){const rows=[["fecha","turno","area","supervisor","dirige","asistentes","no_condiciones","duracion_min","cerrada","actividades","criticas","rf","tarjetas_verdes","alertas","aportes","ultimo_dia"]];list.forEach(r=>rows.push([r.fecha,r.turno,r.area,r.supervisor||r.email,r.dirige,r.asistentes.length,Object.values(r.condicion).filter(c=>c.ok===false).length,minutos(r),r.cerrada?1:0,r.acts.filter(a=>a.nombre).length,r.acts.filter(a=>a.critica).length,rfsDe(r).join(" "),tvs(r).map(t=>t.num).join(" "),alertas(r).length,r.aportes.filter(a=>a.prop).length,r.ultimo?1:0]));const csv=rows.map(x=>x.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(";")).join("\n");const b=new Blob(["﻿"+csv],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="RIT_"+today()+".csv";a.click();}
 
 /* ========= DASHBOARD / REPORTE ========= */
 function reporte(){
-  const base=isAdmin()?filtrar(DB):DB.filter(mine);
+  const base=isAdmin()?filtrar(DB):DB.filter(r=>r.codigo===CFG.codigo);
   const cerr=base.filter(r=>r.cerrada),tv=base.flatMap(tvs),al=base.flatMap(r=>alertas(r).map(a=>({a,r}))),durs=cerr.map(minutos),prom=durs.length?Math.round(durs.reduce((a,b)=>a+b,0)/durs.length):0;
   const rfc={};base.forEach(r=>r.acts.forEach(a=>a.rfs.forEach(s=>{if(s.rf)rfc[s.rf]=(rfc[s.rf]||0)+1;})));const top=Object.entries(rfc).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const noc=base.reduce((n,r)=>n+Object.values(r.condicion).filter(c=>c.ok===false).length,0);
@@ -606,7 +593,7 @@ function reporte(){
    <div class="card" ${isAdmin()?"":'style="margin-top:12px"'}><h2>RF más frecuentes</h2>${top.map(([k,v])=>bar(`<b>${k}</b> ${RF[k].n}`,v,top[0][1],"var(--naranjo)")).join("")||`<div class="empty">Sin datos.</div>`}</div>
    <div class="card"><h2>Tarjetas Verdes</h2>${base.flatMap(r=>tvs(r).map(t=>`<div class="info">🟩 <b>TV ${esc(t.num)}</b> · ${fmtS(r.fecha)} · ${esc(r.supervisor||"")} · ${esc(t.act)} · ${t.item}<br>${esc(t.desc)}</div>`)).reverse().join("")||`<div class="empty">Ninguna.</div>`}</div>
    <div class="card"><h2>Alertas</h2>${al.slice().reverse().map(x=>`<div class="ritrow"><div class="nm">${esc(x.a)}<small>${fmtS(x.r.fecha)} · ${esc(x.r.supervisor||x.r.email||"")} · ${esc(x.r.area||"")}</small></div><button class="btn s sm" onclick="abrir('${x.r.id}')">Ver</button></div>`).join("")||`<div class="empty">Sin alertas 👏</div>`}</div>
-   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="exportarCSV(${isAdmin()?"filtrar(DB)":"DB.filter(mine)"})">Exportar CSV</button><button class="btn s sm w" onclick="window.print()">Imprimir</button></div>`;
+   <div class="card noprint"><button class="btn s sm w" style="margin:0" onclick="exportarCSV(${isAdmin()?"filtrar(DB)":"DB.filter(r=>r.codigo===CFG.codigo)"})">Exportar CSV</button><button class="btn s sm w" onclick="window.print()">Imprimir</button></div>`;
 }
 
 /* ========= ARRANQUE ========= */
@@ -615,9 +602,10 @@ setInterval(()=>{if(!R||R.cerrada)return;const sg=segundos(R);if(view==="rit"){c
 
 async function arranque(){
   if(Q.get("codigo")){ASIS=Object.assign(ASIS||{},{codigo:Q.get("codigo").toUpperCase()});LS.setItem("rit.asis",JSON.stringify(ASIS));view="asis";render();cargarAsis();return;}
-  if(ASIS&&ASIS.codigo&&!(sb&&(await sb.auth.getSession()).data.session)&&!LS.getItem(KEYU)){view="asis";render();cargarAsis();return;}
-  if(sb){const {data}=await sb.auth.getSession();if(data.session){await sesionDesde(data.session.user);return;}view="login";render();return;}
-  const u=JSON.parse(LS.getItem(KEYU)||"null");if(u){USER=u;entrar();}else{view="login";render();}
+  const u=JSON.parse(LS.getItem(KEYU)||"null");
+  if(u&&u.nombre){USER={id:u.id,nombre:u.nombre,cargo:u.cargo||"",role:"trabajador"};entrar();return;}
+  if(ASIS&&ASIS.codigo&&!(u&&u.nombre)){view="asis";render();cargarAsis();return;}
+  view="login";render();
 }
 arranque();
 if("serviceWorker" in navigator){try{navigator.serviceWorker.register("sw.js").catch(()=>{});}catch(e){}}
