@@ -368,10 +368,14 @@ function go(d){
   if(d>0&&S[step]==="asist"&&!R.asistentes.length){toast("Marca al menos un asistente");return;}
   step=Math.max(0,Math.min(S.length-1,step+d));render();window.scrollTo(0,0);
 }
+async function eliminarRIT(id){const r=DB.find(x=>x.id===id);if(!r)return;if(!(isAdmin()||!r.user_id||r.user_id===USER.id)){toast("Solo quien la registró o administración puede eliminarla");return;}
+  if(!confirm(`¿Eliminar la RIT del ${fmt(r.fecha)}? Esta acción no se puede deshacer.`))return;
+  if(sb&&USER){const {error}=await sb.from("rits").delete().eq("id",id);if(error){toast("No se pudo eliminar: "+error.message);return;}}
+  DB=DB.filter(x=>x.id!==id);if(R&&R.id===id)R=null;save(false);toast("RIT eliminada");setView("home");}
 function abrir(id){R=DB.find(r=>r.id===id);if(R.cerrada){setView("resumen");}else{step=0;setView("rit");}}
 function detalles(){step=STEPS().length-1;setView("rit");}
-function iniciarHoy(){
-  let r=DB.find(x=>x.fecha===today()&&!x.cerrada&&mine(x));
+function iniciarHoy(nueva){
+  let r=nueva?null:DB.find(x=>x.fecha===today()&&!x.cerrada&&mine(x));
   if(r&&r.user_id&&r.user_id!==USER.id){toast("La RIT de hoy la está registrando "+(r.registra||r.supervisor));setView("home");return;}
   if(!r){if(!CFG.cuadrilla.length){if(isLider())modalCuadrilla(true);else toast("La cuadrilla aún no tiene integrantes");return;}r=nuevaRIT();if(!r.cuadrilla.some(p=>p.uid===USER.id))r.cuadrilla.unshift({id:uid(),uid:USER.id,nombre:USER.nombre,cargo:CFG.cargo||""});r.cuadrilla_ids=r.cuadrilla.map(p=>p.uid).filter(Boolean);const hechos=DB.filter(mine).slice(-6).map(x=>x.dirige);r.dirige=CFG.cuadrilla.map(p=>p.nombre).find(n=>!hechos.includes(n))||"";DB.push(r);R=r;save();}
   R=r;step=0;setView("rit");
@@ -379,11 +383,11 @@ function iniciarHoy(){
 
 /* ========= INICIO ========= */
 function home(){
-  const mias=DB.filter(mine),hoy=mias.find(x=>x.fecha===today()),pasadas=[...mias].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30),p=pend();
+  const mias=DB.filter(mine),hoy=mias.filter(x=>x.fecha===today()).sort((a,b)=>(a.cerrada?1:0)-(b.cerrada?1:0)||(b.inicioTs||"").localeCompare(a.inicioTs||""))[0],pasadas=[...mias].filter(x=>!(hoy&&x.id===hoy.id)).reverse().slice(0,30),p=pend();
   return `<div class="hoy"><h2>HOY</h2><div class="f">${fmt(today())}</div>
    ${!isAdmin()&&!CFG.codigo&&!CFG.supervisor_id?`<p>Para empezar: crea la cuadrilla (serás su líder y tendrás un código para invitar) o únete a una existente.</p><button class="btn p big w" onclick="crearCuadrilla()">Crear mi cuadrilla</button><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalUnirse()">Unirme con un código</button>`:
      !CFG.cuadrilla.length?`<p>Primero arma tu cuadrilla y datos del área (una sola vez).</p><button class="btn p big w" onclick="modalCuadrilla(true)">Configurar cuadrilla</button>`:
-     hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada · ${mmss(segundos(hoy))} · dirigió ${esc(hoy.dirige)}</p><button class="btn s w" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button>`:
+     hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada · ${mmss(segundos(hoy))} · dirigió ${esc(hoy.dirige)}</p><div class="row"><button class="btn s" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button><button class="btn p" onclick="iniciarHoy(true)">+ Nueva RIT hoy</button></div>`:
        `<div class="clock ${segundos(hoy)>MAX_MIN*60?"over":""}" id="homeClock">⏱ ${mmss(segundos(hoy))}</div><p>RIT en curso · dirige ${esc(hoy.dirige)||"—"} · ${hoy.asistentes.length} presentes</p><button class="btn p big w" onclick="iniciarHoy()">▶ Continuar RIT de hoy</button>`):
      `<p>${esc(CFG.area||"Área sin definir")} · turno ${esc(CFG.turno)} · ${CFG.cuadrilla.length} en cuadrilla · ${esc(CFG.supervisor||"—")}</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy</button>`}
    ${CFG.codigo?`<div style="margin-top:8px;background:rgba(255,255,255,.08);border-radius:10px;padding:8px;text-align:center"><div style="font-size:11px;opacity:.75;letter-spacing:.05em">CÓDIGO DE TU CUADRILLA</div><div style="font-size:36px;font-weight:800;letter-spacing:.18em;color:var(--dorado)">${CFG.codigo}</div><div style="font-size:12px;opacity:.75">Los asistentes lo escriben con su nombre y quedan en la lista</div></div>`:""}
@@ -439,7 +443,8 @@ function pResumen(){
   return `<div class="card sum" style="border-top:5px solid var(--verde)"><h2>✓ RIT cerrada</h2>
    <dl><dt>Fecha</dt><dd><b>${fmt(R.fecha)}</b> · Turno ${esc(R.turno||"")}${R.ultimo?" · último día":""}</dd><dt>Área</dt><dd>${esc(R.area)}</dd><dt>Supervisor</dt><dd>${esc(R.supervisor)}</dd><dt>Dirigió</dt><dd>${esc(R.dirige)}</dd><dt>Duración</dt><dd>${mmss(segundos(R))} (${R.inicioTs?R.inicioTs.slice(11,16):""} → ${R.finTs?new Date(R.finTs).toTimeString().slice(0,5):""})</dd><dt>Asistentes</dt><dd>${nombres.length}</dd><dt>Actividades</dt><dd>${R.acts.filter(a=>a.nombre).length} (${R.acts.filter(a=>a.critica).length} críticas)</dd><dt>RF</dt><dd>${rfsDe(R).map(k=>`<span class="tag rf">${k}</span>`).join(" ")||"—"}</dd><dt>Tarjetas Verdes</dt><dd>${tv.length?tv.map(t=>`<span class="tag tv">🟩 ${esc(t.num)}</span>`).join(" "):"—"}</dd><dt>Alertas</dt><dd>${al.length?`<span class="tag no">${al.length}</span>`:`<span class="tag ok">0</span>`}</dd></dl></div>
    <button class="btn p big w" onclick="setView('home')">Volver al inicio</button>
-   <button class="btn s sm w" onclick="detalles()">Ver detalles</button>`;
+   <button class="btn s sm w" onclick="detalles()">Ver detalles</button>
+   <div style="text-align:center;margin-top:14px"><button class="btn d" onclick="eliminarRIT('${R.id}')">🗑 Eliminar esta RIT</button></div>`;
 }
 
 /* ========= CUADRILLA Y DATOS ========= */
@@ -463,7 +468,8 @@ function pDirige(){
   const hechos=DB.filter(x=>x.id!==R.id&&mine(x)).slice(-6).map(x=>x.dirige);
   return `<div class="q">¿Quién dirige la reunión hoy?</div>
    ${cuad().map(p=>`<div class="persona ${R.dirige===p.nombre?"sel":""}" onclick="R.dirige='${esc(p.nombre)}';save();render()"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${hechos.includes(p.nombre)?" · ya dirigió hace poco":""}</small></div>${R.dirige===p.nombre?"✓":""}</div>`).join("")}
-   <div class="toggle ${R.ultimo?"on":""}" onclick="R.ultimo=!R.ultimo;save();render()"><div class="sw"></div><span><b>Hoy es el último día del turno</b><br><small style="color:var(--muted)">Se agrega el paso de aportes y reconocimiento</small></span></div>`;
+   <div class="toggle ${R.ultimo?"on":""}" onclick="R.ultimo=!R.ultimo;save();render()"><div class="sw"></div><span><b>Hoy es el último día del turno</b><br><small style="color:var(--muted)">Se agrega el paso de aportes y reconocimiento</small></span></div>
+   ${R.cerrada?"":`<div style="text-align:center;margin-top:16px"><button class="btn d" onclick="eliminarRIT('${R.id}')">🗑 Eliminar esta RIT</button></div>`}`;
 }
 function joinURL(){const u=new URL(location.href);u.search="";u.hash="";return `${u.href}?codigo=${R.codigo||CFG.codigo||""}`;}
 function pAsist(){
