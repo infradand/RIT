@@ -93,7 +93,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--turquesa);border
 <body>
 <header>
   <div class="brand"></div>
-  <div class="hbar"><div class="logo">RIT</div><h1>RIT<small>Reunión de Inicio de Turno</small></h1><div id="timer" class="hid"></div><span class="who" id="who"></span><button class="help" onclick="ayuda()">?</button></div>
+  <div class="hbar"><div class="logo">RIT</div><h1>RIT<small>Reunión de Inicio de Turno</small></h1><div id="timer" class="hid"></div><span class="who" id="who"></span><span id="estado" style="font-size:11px;color:var(--dorado);white-space:nowrap"></span><button class="help" onclick="ayuda()">?</button></div>
   <div class="prog hid" id="prog"><span id="progT"></span><div class="bar"><i id="progB"></i></div></div>
 </header>
 <main id="main"></main>
@@ -189,8 +189,15 @@ DB.forEach(r=>{r.acts.forEach(a=>{if(!a.rfs){a.rfs=[{rf:a.rf||"",cons:a.cons||""
 const cuad=()=>R&&R.cuadrilla?R.cuadrilla:CFG.cuadrilla;
 
 /* ========= SINCRONIZACIÓN SUPABASE ========= */
-async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(r.user_id&&r.user_id!==USER.id)return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error)console.warn("sync",error.message);}
-async function syncCfg(){if(!sb||!USER)return;await sb.from("perfiles").update({cfg:CFG,nombre:USER.nombre,cargo:CFG.cargo||null,codigo:CFG.codigo||null,supervisor_id:CFG.supervisor_id||null,updated_at:ahora()}).eq("id",USER.id);}
+async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(r.user_id&&r.user_id!==USER.id)return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error){r._dirty=true;LS.setItem(KEY,JSON.stringify(DB));setEstado(false);}else{delete r._dirty;LS.setItem(KEY,JSON.stringify(DB));setEstado(true);}}
+/* ---- offline: reintento automático ---- */
+let PEND_CFG=false;
+function setEstado(ok){const e=document.getElementById("estado");if(!e)return;const n=DB.filter(r=>r._dirty).length;e.textContent=ok&&!n?"":(navigator.onLine?`⟳ ${n} por subir`:`⚠ sin señal · ${n} por subir`);}
+async function reintentar(){if(!sb||!USER||!navigator.onLine)return;for(const r of DB.filter(x=>x._dirty&&(!x.user_id||x.user_id===USER.id)))await syncRIT(r);if(PEND_CFG){PEND_CFG=false;await syncCfg();}setEstado(true);}
+window.addEventListener("online",()=>{toast("Conexión recuperada: subiendo pendientes");reintentar();});
+window.addEventListener("offline",()=>{toast("Sin señal: se guarda en el celular");setEstado(false);});
+setInterval(reintentar,30000);
+async function syncCfg(){if(!sb||!USER)return;const {error}=await sb.from("perfiles").update({cfg:CFG,nombre:USER.nombre,cargo:CFG.cargo||null,codigo:CFG.codigo||null,supervisor_id:CFG.supervisor_id||null,updated_at:ahora()}).eq("id",USER.id);if(error)PEND_CFG=true;}
 async function pullAll(){
   if(!sb||!USER)return;
   const {data:perfil}=await sb.from("perfiles").select("*").eq("id",USER.id).maybeSingle();
@@ -205,6 +212,7 @@ async function pullAll(){
     todos.forEach(t=>{let p=CFG.cuadrilla.find(x=>x.uid===t.id);if(!p){p=CFG.cuadrilla.find(x=>!x.uid&&x.nombre.toLowerCase()===(t.nombre||"").toLowerCase());if(p)p.uid=t.id;else CFG.cuadrilla.push({id:uid(),uid:t.id,nombre:t.nombre||t.email,cargo:t.cargo||""});}else{p.nombre=t.nombre||p.nombre;p.cargo=t.cargo||p.cargo;}});
     if(CFG.codigo)syncCfg();
   }
+  await reintentar();
   const {data:rows,error}=await sb.from("rits").select("id,user_id,email,data,updated_at").order("updated_at",{ascending:false}).limit(2000);
   if(error){toast("Sin conexión: trabajando con datos locales");return;}
   const map=new Map(DB.filter(r=>!r.user_id||r.user_id===USER.id).map(r=>[r.id,r]));
@@ -220,9 +228,12 @@ async function refrescarRIT(id){
   if(i<0){DB.push(r);}else{if((DB[i].updated_at||"")>=data.updated_at)return false;DB[i]=r;}
   if(R&&R.id===id)R=DB.find(x=>x.id===id);save(false);return true;
 }
-/* acciones del trabajador: pasan por RPC (actualizan la RIT del supervisor) */
+/* acciones del trabajador: pasan por RPC; si no hay señal quedan en cola */
+let COLA=JSON.parse(LS.getItem("rit9.cola")||"[]");
+async function vaciarCola(){if(!sb||!USER||!navigator.onLine||!COLA.length)return;const c=COLA;COLA=[];for(const x of c){const {error}=await sb.rpc(x.fn,x.args);if(error)COLA.push(x);}LS.setItem("rit9.cola",JSON.stringify(COLA));if(!COLA.length){toast("Asistencia y confirmaciones enviadas");const r=ritDeHoyTrab();if(r){await refrescarRIT(r.id);render();}}}
+window.addEventListener("online",vaciarCola);setInterval(vaciarCola,30000);
 async function rpcTrab(fn,args){
-  if(sb){const {data,error}=await sb.rpc(fn,args);if(error){toast("No se pudo enviar: "+error.message);return false;}return true;}
+  if(sb){if(!navigator.onLine){toast("Sin señal: se enviará cuando vuelva la conexión");COLA.push({fn,args});LS.setItem("rit9.cola",JSON.stringify(COLA));return false;}const {data,error}=await sb.rpc(fn,args);if(error){toast("No se pudo enviar: "+error.message);return false;}return true;}
   return true; // modo local: se aplica directo abajo
 }
 async function marcarMiAsistencia(ok,motivo){
