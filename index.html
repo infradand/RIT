@@ -255,7 +255,7 @@ const ritDeHoyTrab=()=>DB.filter(r=>r.fecha===today()&&r.codigo===CFG.codigo).so
 /* ========= ASISTENTE SIN CUENTA ========= */
 let ASIS=JSON.parse(LS.getItem("rit.asis")||"null");   // {codigo,nombre,cargo}
 let ASIS_RIT=null, ASIS_MSG="";
-function irAsistente(){const c=(document.getElementById("aC").value||"").trim().toUpperCase();if(c.length<4){toast("Ingresa el código");return;}ASIS=Object.assign(ASIS||{},{codigo:c});LS.setItem("rit.asis",JSON.stringify(ASIS));view="asis";render();cargarAsis();}
+function irAsistente(){const c=(document.getElementById("aC").value||"").trim().toUpperCase();if(c.length<4){toast("Ingresa el código");return;}ASIS=Object.assign(ASIS||{},{codigo:c});LS.setItem("rit.asis",JSON.stringify(ASIS));view="asis";render();cargarAsis(true);}
 async function rpcAsis(fn,args){
   if(sb){const {data,error}=await sb.rpc(fn,args);if(error){ASIS_MSG=error.message;return null;}return data;}
   /* modo local / demo: emular sobre DB */
@@ -265,7 +265,8 @@ async function rpcAsis(fn,args){
   if(fn==="rit_asistir"){let p=r.cuadrilla.find(x=>x.nombre.toLowerCase()===args.p_nombre.toLowerCase());if(!p){p={id:uid(),nombre:args.p_nombre,cargo:args.p_cargo||""};r.cuadrilla.push(p);}else if(args.p_cargo)p.cargo=args.p_cargo;if(!r.asistentes.includes(p.id))r.asistentes.push(p.id);r.condicion[p.id]={ok:args.p_ok,motivo:args.p_motivo||"",self:true,ts:ahora()};r.updated_at=ahora();save(false);return {ok:true,rit:r};}
   if(fn==="rit_confirmar_anon"){const a=r.acts.find(x=>x.id===args.p_act);const k=a&&a.rfs[args.p_j].ctl.find(x=>x.c===args.p_c&&x.enc.toLowerCase()===args.p_nombre.toLowerCase());if(!k)return {ok:false,msg:"no_es_tuyo"};k.confirmado=args.p_valor;k.confirmadoTs=args.p_valor?ahora():null;r.updated_at=ahora();save(false);return {ok:true,rit:r};}
 }
-async function cargarAsis(){if(!ASIS)return;const d=await rpcAsis("rit_ver",{p_codigo:ASIS.codigo});ASIS_RIT=d&&d.ok?d.rit:null;ASIS_MSG=d&&!d.ok?d.msg:(d?"":ASIS_MSG);if(view==="asis")render();}
+const escribiendo=()=>{const a=document.activeElement;return a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"||a.tagName==="SELECT");};
+async function cargarAsis(force){if(!ASIS)return;const d=await rpcAsis("rit_ver",{p_codigo:ASIS.codigo});const nuevo=d&&d.ok?d.rit:null;const cambio=JSON.stringify(nuevo&&nuevo.updated_at)!==JSON.stringify(ASIS_RIT&&ASIS_RIT.updated_at)||(!!nuevo!==!!ASIS_RIT);ASIS_RIT=nuevo;ASIS_MSG=d&&!d.ok?d.msg:(d?"":ASIS_MSG);if(view==="asis"&&(force||(cambio&&!escribiendo())))render();}
 async function asistir(ok,motivo){
   const n=(document.getElementById("aN")?.value||ASIS.nombre||"").trim(),c=(document.getElementById("aG")?.value||ASIS.cargo||"").trim();
   if(n.split(" ").length<2){toast("Escribe nombre y apellido");return;}
@@ -279,7 +280,7 @@ function pAsis(){
   const r=ASIS_RIT, yo=ASIS||{}, p=r?(r.cuadrilla||[]).find(x=>x.nombre.toLowerCase()===(yo.nombre||"").toLowerCase()):null, pres=r&&p&&r.asistentes.includes(p.id), c=p?r.condicion[p.id]:null;
   const misCtl=r&&yo.nombre?r.acts.flatMap(a=>a.rfs.flatMap((s,j)=>s.ctl.filter(k=>k.enc.toLowerCase()===yo.nombre.toLowerCase()).map(k=>({a,s,j,k})))):[];
   return `<div class="hoy"><h2>HOY · CÓDIGO ${esc(yo.codigo)}</h2><div class="f">${fmt(today())}</div>
-   ${!r?`<p>${ASIS_MSG==="sin_rit"||!ASIS_MSG?"Todavía nadie inicia la RIT de hoy con este código. Espera a que el líder la abra.":"No se pudo consultar: "+esc(ASIS_MSG)}</p><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="cargarAsis()">↻ Actualizar</button>`:
+   ${!r?`<p>${ASIS_MSG==="sin_rit"||!ASIS_MSG?"Todavía nadie inicia la RIT de hoy con este código. Espera a que el líder la abra.":"No se pudo consultar: "+esc(ASIS_MSG)}</p><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="cargarAsis(true)">↻ Actualizar</button>`:
      !pres?`<p>${esc(r.area||"")} · dirige ${esc(r.dirige)||"—"} · registra ${esc(r.registra||r.supervisor||"")}</p>
        <label style="color:rgba(255,255,255,.8)">Nombre y apellido</label><input id="aN" value="${esc(yo.nombre||"")}" placeholder="Ej: Juan Pérez"><label style="color:rgba(255,255,255,.8)">Cargo / empresa (opcional)</label><input id="aG" value="${esc(yo.cargo||"")}" placeholder="Ej: Maestro techumbres · Rukalaf">
        <div class="q" style="color:#fff;font-size:18px;margin-top:12px">¿Estás en condiciones de realizar tu trabajo?</div><div class="row"><button class="btn big" style="background:var(--verde);color:#fff" onclick="asistir(true)">✓ Sí, presente</button><button class="btn big r" onclick="modalNoCondAnon()">No</button></div>`:
@@ -292,7 +293,7 @@ function pAsis(){
   <div class="card"><h2>RIT de hoy · dirige ${esc(r.dirige)||"—"}</h2>
    ${r.acts.filter(a=>a.nombre).map((a,i)=>`<div class="rfslot" style="background:#fff"><b>${i+1}. ${esc(a.nombre)}</b>${a.critica?' <span class="tag no">crítica</span>':""}
     ${a.rfs.filter(x=>x.rf).map(x=>`<div style="font-size:13px;margin-top:6px"><span class="tag rf">${x.rf}</span> <b>${RF[x.rf].n}</b>${x.cons?` · ${esc(x.cons)}`:""}<br>${x.ctl.map(k=>`<span class="tag ${k.c.startsWith("CCP")?"ccp":"ccm"}">${k.c}</span> ${esc(RF[x.rf].c.find(z=>z[0]===k.c)[1])} → 👤 ${esc(k.enc)}${k.confirmado?" <b style='color:var(--verde)'>✓✓</b>":""}`).join("<br>")}</div>`).join("")}</div>`).join("")||`<div class="empty">Aún no se registran las actividades.</div>`}
-   <div style="text-align:center;margin-top:8px"><button class="btn s sm" onclick="cargarAsis()">↻ Actualizar</button></div></div>`:""}`;
+   <div style="text-align:center;margin-top:8px"><button class="btn s sm" onclick="cargarAsis(true)">↻ Actualizar</button></div></div>`:""}`;
 }
 function modalNoCondAnon(){openModal(`<h3>⚠️ No estoy en condiciones</h3><label>¿Qué te pasa? (lo verá quien registra la RIT)</label><textarea id="nM" placeholder="Ej: malestar, fatiga, dolor…"></textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=nM.value.trim();if(!m){toast('Indica el motivo');return;}closeModal();asistir(false,m)">Enviar</button></div>`);}
 setInterval(()=>{if(view==="asis"&&ASIS)cargarAsis();},10000);
@@ -327,7 +328,7 @@ async function reiniciarTodo(){if(!confirm("REINICIAR APP: se borran TODAS las R
   [KEY,KEYC,KEYU,"rit.asis","rit9.cola"].forEach(x=>LS.removeItem(x));alert("Listo: la app quedó en cero.");location.reload();}
 async function salir(){USER=null;LS.removeItem(KEYU);R=null;view="login";render();}
 function entrar(){LS.setItem(KEYU,JSON.stringify(Object.assign(USER,{codigo:CFG.codigo})));view="home";render();if(sb){pullAll().then(()=>render());iniciarPolling();}}
-let pollT=null;function iniciarPolling(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{const r=(R&&!R.cerrada&&view==="rit")?R:ritDeHoyTrab();if(!r)return;if(await refrescarRIT(r.id)){if(view==="home"||view==="rit")render();}},8000);}
+let pollT=null;function iniciarPolling(){if(pollT)clearInterval(pollT);pollT=setInterval(async()=>{const r=(R&&!R.cerrada&&view==="rit")?R:ritDeHoyTrab();if(!r)return;if(await refrescarRIT(r.id)){if((view==="home"||view==="rit")&&!escribiendo())render();}},8000);}
 function modalRepo(){openModal(`<h3>🗂 Repositorio · Dashboard</h3><p style="font-size:13px;color:var(--muted);margin:0 0 6px">Acceso de supervisión. Ingresa la clave.</p><label>Clave</label><input id="rK" type="password" autocomplete="off"><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn t" onclick="entrarRepo()">Entrar</button></div><div id="rMsg" class="info warn hid"></div>`);setTimeout(()=>document.getElementById("rK").focus(),50);}
 async function entrarRepo(){const k=(document.getElementById("rK").value||"").trim();if(!k){toast("Escribe la clave");return;}
   if(!sb){if(k!==CLAVE_LOCAL){toast("Clave incorrecta");return;}USER.role="admin";closeModal();setView("repo");return;}
