@@ -93,7 +93,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--turquesa);border
 <body>
 <header>
   <div class="brand"></div>
-  <div class="hbar"><div class="logo">RIT</div><h1>RIT<small>Reunión de Inicio de Turno</small></h1><div id="timer" class="hid"></div><span class="who" id="who"></span><span id="estado" style="font-size:11px;color:var(--dorado);white-space:nowrap"></span><button class="help" onclick="ayuda()">?</button></div>
+  <div class="hbar"><div class="logo">RIT</div><h1>RIT<small>Reunión de Inicio de Turno</small></h1><div id="timer" class="hid"></div><span class="who" id="who"></span><button class="help" onclick="ayuda()">?</button></div>
   <div class="prog hid" id="prog"><span id="progT"></span><div class="bar"><i id="progB"></i></div></div>
 </header>
 <main id="main"></main>
@@ -101,8 +101,6 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--turquesa);border
 <div class="modal" id="modal"><div class="box" id="modalBox"></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 /* =====================================================================
@@ -183,13 +181,13 @@ const minutos=d=>Math.round(segundos(d)/60);
 const mmss=s=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
 const pend=()=>{const p=[];DB.filter(r=>r.cerrada&&mine(r)).forEach(r=>r.aportes.forEach(a=>{if(a.prop&&a.estado!=="cumplido")p.push({...a,ritId:r.id,fecha0:r.fecha});}));return p;};
 const nuevaAct=()=>({id:uid(),nombre:"",critica:false,prep:{},tv:{},rfs:Array.from({length:RF_POR_ACT},()=>({rf:"",cons:"",ctl:[]}))});
-function nuevaRIT(){return {id:uid(),user_id:USER?USER.id:null,email:USER?USER.email:"",registra:USER?USER.nombre:"",supervisor:CFG.supervisor,area:CFG.area,gerencia:CFG.gerencia,sup:CFG.sup,turno:CFG.turno,fecha:today(),inicioTs:ahora(),finTs:null,dirige:"",ultimo:false,asistentes:[],condicion:{},cuadrilla:CFG.cuadrilla.map(p=>({...p})),cuadrilla_ids:CFG.cuadrilla.map(p=>p.uid).filter(Boolean),acts:Array.from({length:MIN_ACTS},nuevaAct),entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:"",updated_at:ahora()};}
+function nuevaRIT(){return {id:uid(),codigo:CFG.codigo||"",user_id:USER?USER.id:null,email:USER?USER.email:"",registra:USER?USER.nombre:"",supervisor:CFG.supervisor,area:CFG.area,gerencia:CFG.gerencia,sup:CFG.sup,turno:CFG.turno,fecha:today(),inicioTs:ahora(),finTs:null,dirige:"",ultimo:false,asistentes:[],condicion:{},cuadrilla:CFG.cuadrilla.map(p=>({...p})),cuadrilla_ids:CFG.cuadrilla.map(p=>p.uid).filter(Boolean),acts:Array.from({length:MIN_ACTS},nuevaAct),entorno:{},aportes:[],recon:[],firmaDirige:null,firmaSup:null,cerrada:false,obs:"",updated_at:ahora()};}
 /* migración de RIT antiguas (v6: a.rf) */
 DB.forEach(r=>{r.acts.forEach(a=>{if(!a.rfs){a.rfs=[{rf:a.rf||"",cons:a.cons||"",ctl:a.ctl||[]}];}while(a.rfs.length<RF_POR_ACT)a.rfs.push({rf:"",cons:"",ctl:[]});});if(!r.inicioTs&&r.inicioHora)r.inicioTs=r.fecha+"T"+r.inicioHora+":00";if(!r.finTs&&r.finHora)r.finTs=r.fecha+"T"+r.finHora+":00";if(!r.cuadrilla)r.cuadrilla=CFG.cuadrilla;});
 const cuad=()=>R&&R.cuadrilla?R.cuadrilla:CFG.cuadrilla;
 
 /* ========= SINCRONIZACIÓN SUPABASE ========= */
-async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(r.user_id&&r.user_id!==USER.id)return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error){r._dirty=true;LS.setItem(KEY,JSON.stringify(DB));setEstado(false);}else{delete r._dirty;LS.setItem(KEY,JSON.stringify(DB));setEstado(true);}}
+async function syncRIT(r){if(!sb||!USER)return;r.updated_at=ahora();if(r.user_id&&r.user_id!==USER.id)return; const row={id:r.id,user_id:USER.id,email:USER.email,supervisor:r.supervisor||CFG.supervisor,area:r.area||CFG.area,fecha:r.fecha,cerrada:!!r.cerrada,cuadrilla_ids:(r.cuadrilla||[]).map(p=>p.uid).filter(Boolean),codigo:r.codigo||CFG.codigo||null,data:r,updated_at:r.updated_at};const {error}=await sb.from("rits").upsert(row);if(error){r._dirty=true;LS.setItem(KEY,JSON.stringify(DB));setEstado(false);}else{delete r._dirty;LS.setItem(KEY,JSON.stringify(DB));setEstado(true);}}
 /* ---- offline: reintento automático ---- */
 let PEND_CFG=false;
 function setEstado(ok){const e=document.getElementById("estado");if(!e)return;const n=DB.filter(r=>r._dirty).length;e.textContent=ok&&!n?"":(navigator.onLine?`⟳ ${n} por subir`:`⚠ sin señal · ${n} por subir`);}
@@ -226,7 +224,9 @@ async function refrescarRIT(id){
   if(!sb||!USER)return false;const {data}=await sb.from("rits").select("data,updated_at,user_id,email").eq("id",id).maybeSingle();if(!data)return false;
   const r=data.data;r.user_id=data.user_id;r.email=data.email;const i=DB.findIndex(x=>x.id===id);
   if(i<0){DB.push(r);}else{if((DB[i].updated_at||"")>=data.updated_at)return false;DB[i]=r;}
-  if(R&&R.id===id)R=DB.find(x=>x.id===id);save(false);return true;
+  if(R&&R.id===id)R=DB.find(x=>x.id===id);
+  if(isLider()&&r.user_id===USER.id){let n=0;(r.cuadrilla||[]).forEach(p=>{if(!CFG.cuadrilla.some(q=>q.id===p.id||q.nombre.toLowerCase()===p.nombre.toLowerCase())){CFG.cuadrilla.push({...p});n++;}});if(n){LS.setItem(KEYC,JSON.stringify(CFG));syncCfg();}}
+  save(false);return true;
 }
 /* acciones del trabajador: pasan por RPC; si no hay señal quedan en cola */
 let COLA=JSON.parse(LS.getItem("rit9.cola")||"[]");
@@ -254,16 +254,66 @@ async function crearCuadrilla(){if(CFG.supervisor_id){if(!confirm("Dejarás la c
   closeModal();modalCuadrilla(true);}
 const ritDeHoyTrab=()=>DB.filter(r=>r.fecha===today()&&(r.cuadrilla||[]).some(p=>p.uid===USER.id)).sort((a,b)=>(b.inicioTs||"").localeCompare(a.inicioTs||""))[0];
 
+/* ========= ASISTENTE SIN CUENTA ========= */
+let ASIS=JSON.parse(LS.getItem("rit.asis")||"null");   // {codigo,nombre,cargo}
+let ASIS_RIT=null, ASIS_MSG="";
+function irAsistente(){const c=(document.getElementById("aC").value||"").trim().toUpperCase();if(c.length<4){toast("Ingresa el código");return;}ASIS=Object.assign(ASIS||{},{codigo:c});LS.setItem("rit.asis",JSON.stringify(ASIS));view="asis";render();cargarAsis();}
+async function rpcAsis(fn,args){
+  if(sb){const {data,error}=await sb.rpc(fn,args);if(error){ASIS_MSG=error.message;return null;}return data;}
+  /* modo local / demo: emular sobre DB */
+  const lider=(DB.find(r=>r.codigo===args.p_codigo)||{});const r=DB.filter(x=>x.codigo===args.p_codigo&&x.fecha===today()).sort((a,b)=>(b.inicioTs||"").localeCompare(a.inicioTs||""))[0];
+  if(fn==="rit_ver")return r?{ok:true,rit:r}:{ok:false,msg:"sin_rit"};
+  if(!r)return {ok:false,msg:"sin_rit"};
+  if(fn==="rit_asistir"){let p=r.cuadrilla.find(x=>x.nombre.toLowerCase()===args.p_nombre.toLowerCase());if(!p){p={id:uid(),nombre:args.p_nombre,cargo:args.p_cargo||""};r.cuadrilla.push(p);}else if(args.p_cargo)p.cargo=args.p_cargo;if(!r.asistentes.includes(p.id))r.asistentes.push(p.id);r.condicion[p.id]={ok:args.p_ok,motivo:args.p_motivo||"",self:true,ts:ahora()};r.updated_at=ahora();save(false);return {ok:true,rit:r};}
+  if(fn==="rit_confirmar_anon"){const a=r.acts.find(x=>x.id===args.p_act);const k=a&&a.rfs[args.p_j].ctl.find(x=>x.c===args.p_c&&x.enc.toLowerCase()===args.p_nombre.toLowerCase());if(!k)return {ok:false,msg:"no_es_tuyo"};k.confirmado=args.p_valor;k.confirmadoTs=args.p_valor?ahora():null;r.updated_at=ahora();save(false);return {ok:true,rit:r};}
+}
+async function cargarAsis(){if(!ASIS)return;const d=await rpcAsis("rit_ver",{p_codigo:ASIS.codigo});ASIS_RIT=d&&d.ok?d.rit:null;ASIS_MSG=d&&!d.ok?d.msg:(d?"":ASIS_MSG);if(view==="asis")render();}
+async function asistir(ok,motivo){
+  const n=(document.getElementById("aN")?.value||ASIS.nombre||"").trim(),c=(document.getElementById("aG")?.value||ASIS.cargo||"").trim();
+  if(n.split(" ").length<2){toast("Escribe nombre y apellido");return;}
+  ASIS=Object.assign(ASIS,{nombre:n,cargo:c});LS.setItem("rit.asis",JSON.stringify(ASIS));
+  const d=await rpcAsis("rit_asistir",{p_codigo:ASIS.codigo,p_nombre:n,p_cargo:c,p_ok:ok,p_motivo:motivo||""});
+  if(!d||!d.ok){toast(d&&d.msg==="sin_rit"?"Aún no se inicia la RIT de hoy":"No se pudo registrar: "+(ASIS_MSG||""));return;}
+  ASIS_RIT=d.rit;render();toast(ok?"✓ Asistencia registrada":"Registrado: no en condiciones");
+}
+async function confirmarAnon(aid,j,c,valor){const d=await rpcAsis("rit_confirmar_anon",{p_codigo:ASIS.codigo,p_nombre:ASIS.nombre,p_act:aid,p_j:j,p_c:c,p_valor:valor});if(d&&d.ok){ASIS_RIT=d.rit;render();}else toast("No se pudo confirmar");}
+function pAsis(){
+  const r=ASIS_RIT, yo=ASIS||{}, p=r?(r.cuadrilla||[]).find(x=>x.nombre.toLowerCase()===(yo.nombre||"").toLowerCase()):null, pres=r&&p&&r.asistentes.includes(p.id), c=p?r.condicion[p.id]:null;
+  const misCtl=r&&yo.nombre?r.acts.flatMap(a=>a.rfs.flatMap((s,j)=>s.ctl.filter(k=>k.enc.toLowerCase()===yo.nombre.toLowerCase()).map(k=>({a,s,j,k})))):[];
+  return `<div class="hoy"><h2>HOY · CÓDIGO ${esc(yo.codigo)}</h2><div class="f">${fmt(today())}</div>
+   ${!r?`<p>${ASIS_MSG==="sin_rit"||!ASIS_MSG?"Todavía nadie inicia la RIT de hoy con este código. Espera a que el líder la abra.":"No se pudo consultar: "+esc(ASIS_MSG)}</p><button class="btn s w" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="cargarAsis()">↻ Actualizar</button>`:
+     !pres?`<p>${esc(r.area||"")} · dirige ${esc(r.dirige)||"—"} · registra ${esc(r.registra||r.supervisor||"")}</p>
+       <label style="color:rgba(255,255,255,.8)">Nombre y apellido</label><input id="aN" value="${esc(yo.nombre||"")}" placeholder="Ej: Juan Pérez"><label style="color:rgba(255,255,255,.8)">Cargo / empresa (opcional)</label><input id="aG" value="${esc(yo.cargo||"")}" placeholder="Ej: Maestro techumbres · Rukalaf">
+       <div class="q" style="color:#fff;font-size:18px;margin-top:12px">¿Estás en condiciones de realizar tu trabajo?</div><div class="row"><button class="btn big" style="background:var(--verde);color:#fff" onclick="asistir(true)">✓ Sí, presente</button><button class="btn big r" onclick="modalNoCondAnon()">No</button></div>`:
+     `<p><b>${esc(yo.nombre)}</b> · ${c&&c.ok===false?"⚠️ registrado: no en condiciones · "+esc(c.motivo):"✓ presente y en condiciones"}${r.cerrada?" · RIT cerrada":""}</p>${r.cerrada?"":`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalNoCondAnon()">Cambiar a "no en condiciones"</button>`}`}
+   <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="ASIS=null;ASIS_RIT=null;LS.removeItem('rit.asis');view='login';render()">Cambiar código / salir</button></div></div>
+  ${r&&pres?`
+  ${misCtl.length?`<div class="card"><h2>Mis controles a confirmar en terreno <span class="tag ${misCtl.every(x=>x.k.confirmado)?"ok":"no"}">${misCtl.filter(x=>x.k.confirmado).length}/${misCtl.length}</span></h2>
+   ${misCtl.map(({a,s,j,k})=>`<button class="btn ${k.confirmado?"t":"s"} w" style="justify-content:flex-start;text-align:left;font-weight:500;line-height:1.3" onclick="confirmarAnon('${a.id}',${j},'${k.c}',${!k.confirmado})"><span style="font-size:20px">${k.confirmado?"✓✓":"☐"}</span><span><b>${s.rf}-${k.c}</b> ${esc(RF[s.rf].c.find(x=>x[0]===k.c)[1])}<br><small style="opacity:.8">${esc(a.nombre)}</small></span></button>`).join("")}
+   <div class="info">Toca cada control cuando lo hayas verificado en terreno.</div></div>`:""}
+  <div class="card"><h2>RIT de hoy · dirige ${esc(r.dirige)||"—"}</h2>
+   ${r.acts.filter(a=>a.nombre).map((a,i)=>`<div class="rfslot" style="background:#fff"><b>${i+1}. ${esc(a.nombre)}</b>${a.critica?' <span class="tag no">crítica</span>':""}
+    ${a.rfs.filter(x=>x.rf).map(x=>`<div style="font-size:13px;margin-top:6px"><span class="tag rf">${x.rf}</span> <b>${RF[x.rf].n}</b>${x.cons?` · ${esc(x.cons)}`:""}<br>${x.ctl.map(k=>`<span class="tag ${k.c.startsWith("CCP")?"ccp":"ccm"}">${k.c}</span> ${esc(RF[x.rf].c.find(z=>z[0]===k.c)[1])} → 👤 ${esc(k.enc)}${k.confirmado?" <b style='color:var(--verde)'>✓✓</b>":""}`).join("<br>")}</div>`).join("")}</div>`).join("")||`<div class="empty">Aún no se registran las actividades.</div>`}
+   <div style="text-align:center;margin-top:8px"><button class="btn s sm" onclick="cargarAsis()">↻ Actualizar</button></div></div>`:""}`;
+}
+function modalNoCondAnon(){openModal(`<h3>⚠️ No estoy en condiciones</h3><label>¿Qué te pasa? (lo verá quien registra la RIT)</label><textarea id="nM" placeholder="Ej: malestar, fatiga, dolor…"></textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=nM.value.trim();if(!m){toast('Indica el motivo');return;}closeModal();asistir(false,m)">Enviar</button></div>`);}
+setInterval(()=>{if(view==="asis"&&ASIS)cargarAsis();},10000);
+
 /* ========= LOGIN ========= */
 function pLogin(){
   const main=document.getElementById("main");
   if(!sb){
     const prev=JSON.parse(LS.getItem(KEYU)||"null");
-    main.innerHTML=`<div class="login"><h2>¿Quién eres?</h2><p>Modo local (sin Supabase configurado): solo se registra tu nombre para las firmas y el reporte.</p>
+    const yo0=JSON.parse(LS.getItem("rit.asis")||"{}");
+    main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Sin cuenta: código de la cuadrilla y tu nombre.</p><label>Código</label><input id="aC" value="${esc(yo0.codigo||Q.get("codigo")||"")}" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123"><button class="btn p big w" onclick="irAsistente()">Continuar</button></div><div class="login"><h2>¿Quién eres?</h2><p>Modo local (sin Supabase configurado): solo se registra tu nombre para las firmas y el reporte.</p>
      <label>Nombre</label><input id="lN" value="${esc(prev?prev.nombre:CFG.supervisor)}"><button class="btn p w" onclick="const n=lN.value.trim();if(!n){toast('Escribe tu nombre');return;}USER={id:'local',email:'',nombre:n,role:'admin'};LS.setItem(KEYU,JSON.stringify(USER));CFG.supervisor=CFG.supervisor||n;save(false);entrar()">Entrar</button></div>`;
     return;
   }
-  main.innerHTML=`<div class="login"><h2>Iniciar sesión</h2><p>Una sola cuenta para todos: trabajadores, líderes de cuadrilla y supervisión, de Codelco o empresas contratistas.</p>
+  const yo=JSON.parse(LS.getItem("rit.asis")||"{}");
+  main.innerHTML=`<div class="login" style="border-top:5px solid var(--dorado)"><h2>Soy asistente a la RIT</h2><p>Sin cuenta. Ingresa el código de tu cuadrilla y tu nombre: quedas en la lista de asistencia.</p>
+   <label>Código de cuadrilla</label><input id="aC" value="${esc(yo.codigo||Q.get("codigo")||"")}" style="text-transform:uppercase;letter-spacing:.15em;font-size:22px;text-align:center" maxlength="6" placeholder="ABC123">
+   <button class="btn p big w" onclick="irAsistente()">Continuar</button></div>
+  <div class="login"><h2>Lidero la RIT / administración</h2><p>Con cuenta: quien crea la cuadrilla, registra la RIT del día y firma.</p>
    <label>Correo</label><input id="lE" type="email" autocomplete="username" placeholder="nombre@codelco.cl"><label>Contraseña</label><input id="lP" type="password" autocomplete="current-password">
    <button class="btn p w" onclick="login()">Entrar</button>
    <button class="btn s sm w" onclick="registro()">Crear cuenta nueva</button>
@@ -289,6 +339,7 @@ function render(){
   document.getElementById("who").textContent=USER?USER.nombre.split(" ")[0]+(isAdmin()?" · admin":isLider()?" · líder":""):"";
   const main=document.getElementById("main");
   if(view==="login"){pLogin();return;}
+  if(view==="asis"){main.innerHTML=pAsis();return;}
   if(view==="home"){const r0=ritDeHoyTrab();main.innerHTML=(isTrab()||(isLider()&&r0&&r0.user_id!==USER.id&&!r0.cerrada))?homeTrab():home();return;}
   if(view==="resumen"){main.innerHTML=pResumen();return;}
   if(view==="repo"){main.innerHTML=repositorio();return;}
@@ -299,7 +350,7 @@ function render(){
   const bn=document.getElementById("bNext");
   if(k==="cierre"){bn.textContent=R.cerrada?"Volver al inicio":"✓ Cerrar RIT";bn.className=R.cerrada?"btn s":"btn t";}else{bn.textContent="Siguiente";bn.className="btn p";}
   main.innerHTML=`<div class="guia">${GUIA[k]}</div>`+({dirige:pDirige,asist:pAsist,acts:pActs,entorno:pEntorno,ultimo:pUltimo,cierre:pCierre})[k]();
-  const qb=document.getElementById("qrBox");if(qb)drawQR(qb,joinURL(),170);
+
 }
 function setView(v){view=v;render();window.scrollTo(0,0);}
 const STEPS=()=>R&&R.ultimo?["dirige","asist","acts","entorno","ultimo","cierre"]:["dirige","asist","acts","entorno","cierre"];
@@ -335,7 +386,7 @@ function home(){
      hoy?(hoy.cerrada?`<p>✓ RIT de hoy cerrada · ${mmss(segundos(hoy))} · dirigió ${esc(hoy.dirige)}</p><button class="btn s w" onclick="abrir('${hoy.id}')">Ver RIT de hoy</button>`:
        `<div class="clock ${segundos(hoy)>MAX_MIN*60?"over":""}" id="homeClock">⏱ ${mmss(segundos(hoy))}</div><p>RIT en curso · dirige ${esc(hoy.dirige)||"—"} · ${hoy.asistentes.length} presentes</p><button class="btn p big w" onclick="iniciarHoy()">▶ Continuar RIT de hoy</button>`):
      `<p>${esc(CFG.area||"Área sin definir")} · turno ${esc(CFG.turno)} · ${CFG.cuadrilla.length} en cuadrilla · ${esc(CFG.supervisor||"—")}</p><button class="btn p big w" onclick="iniciarHoy()">▶ Iniciar RIT de hoy</button>`}
-   ${CFG.codigo?`<p style="margin-top:6px">Código de tu cuadrilla: <b style="font-size:18px;letter-spacing:.1em;color:var(--dorado)">${CFG.codigo}</b> <span style="opacity:.7">· quien lo ingrese en su app queda en tu cuadrilla</span></p>`:""}
+   ${CFG.codigo?`<div style="margin-top:8px;background:rgba(255,255,255,.08);border-radius:10px;padding:8px;text-align:center"><div style="font-size:11px;opacity:.75;letter-spacing:.05em">CÓDIGO DE TU CUADRILLA</div><div style="font-size:36px;font-weight:800;letter-spacing:.18em;color:var(--dorado)">${CFG.codigo}</div><div style="font-size:12px;opacity:.75">Los asistentes lo escriben con su nombre y quedan en la lista</div></div>`:""}
    <div class="row" style="margin-top:10px"><button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="modalCuadrilla()">👥 Cuadrilla y datos</button>${isAdmin()?`<button class="btn s sm" style="background:var(--dorado);color:var(--pizarra);border:none" onclick="setView('repo')">🗂 Repositorio · Dashboard</button>`:`<button class="btn s sm" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.3)" onclick="setView('rep')">📊 Mi reporte</button>`}</div>
    <div style="text-align:right;margin-top:8px"><button class="btn d" style="color:rgba(255,255,255,.6)" onclick="salir()">Cerrar sesión</button></div></div>
   ${p.length?`<div class="card"><h2>Aportes pendientes del turno anterior <span class="tag no">${p.length}</span></h2>${p.map(a=>`<div class="ritrow"><div class="nm">${esc(a.prop)}<small>${esc(a.resp)} · compromiso ${a.fecha||"s/f"}</small></div><button class="btn t sm" onclick="cumplir('${a.ritId}','${esc(a.prop)}')">Cumplido</button></div>`).join("")}</div>`:""}
@@ -414,13 +465,13 @@ function pDirige(){
    ${cuad().map(p=>`<div class="persona ${R.dirige===p.nombre?"sel":""}" onclick="R.dirige='${esc(p.nombre)}';save();render()"><div class="av">${ini(p.nombre)}</div><div class="nm">${esc(p.nombre)}<small>${esc(p.cargo||"")}${hechos.includes(p.nombre)?" · ya dirigió hace poco":""}</small></div>${R.dirige===p.nombre?"✓":""}</div>`).join("")}
    <div class="toggle ${R.ultimo?"on":""}" onclick="R.ultimo=!R.ultimo;save();render()"><div class="sw"></div><span><b>Hoy es el último día del turno</b><br><small style="color:var(--muted)">Se agrega el paso de aportes y reconocimiento</small></span></div>`;
 }
-function joinURL(){const u=new URL(location.href);u.search="";u.hash="";return `${u.href}?join=${R.id}&a=${encodeURIComponent(R.area||"")}&f=${R.fecha}`;}
+function joinURL(){const u=new URL(location.href);u.search="";u.hash="";return `${u.href}?codigo=${R.codigo||CFG.codigo||""}`;}
 function pAsist(){
   const noOk=Object.values(R.condicion).filter(c=>c.ok===false).length;
   return `<div class="q">¿Quiénes están y en condiciones?</div><div class="info" style="margin-bottom:10px">Toca el nombre para marcar presente. Luego <b>OK</b> si está en condiciones de trabajar, <b>NO</b> si no.</div>
-   ${cuad().map(p=>{const pres=R.asistentes.includes(p.id),c=R.condicion[p.id]||{};return `<div class="persona ${pres?"on":""}"><div class="av" onclick="togAsist('${p.id}')">${pres?"✓":ini(p.nombre)}</div><div class="nm" onclick="togAsist('${p.id}')">${esc(p.nombre)}<small>${esc(p.cargo||"")}${c.ok===false?` · <span style="color:var(--rojo)">${esc(c.motivo)}</span>`:""}${c.self?' · <span style="color:var(--turquesa)">📱 marcó desde su app</span>':""}</small></div>${pres?`<div class="yn"><button class="${c.ok===true?"si":""}" onclick="R.condicion['${p.id}']={ok:true};save();render()">OK</button><button class="${c.ok===false?"no":""}" onclick="modalCond('${p.id}')">NO</button></div>`:""}</div>`;}).join("")}
+   ${cuad().map(p=>{const pres=R.asistentes.includes(p.id),c=R.condicion[p.id]||{};return `<div class="persona ${pres?"on":""}"><div class="av" onclick="togAsist('${p.id}')">${pres?"✓":ini(p.nombre)}</div><div class="nm" onclick="togAsist('${p.id}')">${esc(p.nombre)}<small>${esc(p.cargo||"")}${c.ok===false?` · <span style="color:var(--rojo)">${esc(c.motivo)}</span>`:""}${c.self?' · <span style="color:var(--turquesa)">📱 se registró con el código'+(c.ts?" "+new Date(c.ts).toTimeString().slice(0,5):"")+'</span>':""}</small></div>${pres?`<div class="yn"><button class="${c.ok===true?"si":""}" onclick="R.condicion['${p.id}']={ok:true};save();render()">OK</button><button class="${c.ok===false?"no":""}" onclick="modalCond('${p.id}')">NO</button></div>`:""}</div>`;}).join("")}
    <button class="btn s w" onclick="cuad().forEach(p=>{if(!R.asistentes.includes(p.id))R.asistentes.push(p.id);if(!R.condicion[p.id])R.condicion[p.id]={ok:true};});save();render()">Todos presentes y OK</button>
-   <div class="card" style="margin-top:12px"><h2>Registro por QR (opcional) <span class="tag ok">${R.asistentes.length} presentes</span>${noOk?` <span class="tag no">${noOk} no en condiciones</span>`:""}</h2><div id="qrBox" style="display:grid;place-items:center"></div><div class="info" style="text-align:center">Cada persona escanea, escribe su nombre y le aparece un QR; tú lo lees con la cámara.</div><div class="row" style="margin-top:8px"><button class="btn s sm" onclick="pantallaQR()">Ampliar QR</button><button class="btn t sm" onclick="escanear()">📷 Escanear</button></div></div>`;
+   <div class="card" style="margin-top:12px"><h2>Registro con código <span class="tag ok">${R.asistentes.length} presentes</span>${noOk?` <span class="tag no">${noOk} no en condiciones</span>`:""}</h2><div style="text-align:center;font-size:44px;font-weight:800;letter-spacing:.18em;color:var(--pizarra);padding:6px 0 2px">${esc(R.codigo||CFG.codigo||"—")}</div><div class="info" style="text-align:center">Cada asistente abre la app, escribe este código y su <b>nombre y apellido</b>. Aparece aquí solo, con la hora.</div><div class="row" style="margin-top:8px"><button class="btn s sm" onclick="codigoGrande()">Mostrar en grande</button><button class="btn s sm" onclick="refrescarRIT(R.id).then(()=>render())">↻ Actualizar</button></div></div>`;
 }
 function togAsist(id){const i=R.asistentes.indexOf(id);if(i<0){R.asistentes.push(id);R.condicion[id]={ok:true};}else{R.asistentes.splice(i,1);delete R.condicion[id];}save();render();}
 function modalCond(id){const p=cuad().find(x=>x.id===id),c=R.condicion[id]||{};openModal(`<h3>⚠️ ${esc(p.nombre)} no está en condiciones</h3><label>¿Qué pasa y qué se hace?</label><textarea id="cM" placeholder="Ej: fatiga; se reasigna a apoyo en piso sin carga / se deriva a policlínico">${esc(c.motivo||"")}</textarea><div class="row" style="margin-top:12px"><button class="btn s" onclick="closeModal()">Cancelar</button><button class="btn r" onclick="const m=document.getElementById('cM').value.trim();if(!m){toast('Indica el motivo');return;}R.condicion['${id}']={ok:false,motivo:m};save();closeModal();render()">Registrar</button></div>`);}
@@ -479,6 +530,7 @@ function cerrar(){const f=[];if(!R.firmaDirige)f.push("firma de quien dirige");i
 
 /* ========= QR ========= */
 function drawQR(el,t,s){el.innerHTML="";if(typeof QRCode==="undefined"){el.innerHTML=`<div class="info">QR no disponible sin internet.</div>`;return;}new QRCode(el,{text:t,width:s,height:s,correctLevel:QRCode.CorrectLevel.M});}
+function codigoGrande(){openModal(`<h3 style="justify-content:center">Código de la cuadrilla</h3><div style="text-align:center;font-size:64px;font-weight:800;letter-spacing:.2em;color:var(--pizarra);padding:20px 0">${esc(R.codigo||CFG.codigo||"")}</div><div style="text-align:center;font-size:14px;color:var(--muted)">Abre la app → "Soy asistente" → escribe el código y tu nombre y apellido.</div><button class="btn s w" onclick="closeModal()">Cerrar</button>`);}
 function pantallaQR(){openModal(`<h3 style="justify-content:center">Escanea para registrarte</h3><div id="qrBig" style="display:grid;place-items:center;padding:10px"></div><div style="text-align:center;font-size:13px;color:var(--muted)">${esc(R.area)} · ${fmt(R.fecha)}</div><button class="btn s w" onclick="closeModal()">Cerrar</button>`);drawQR(document.getElementById("qrBig"),joinURL(),Math.min(320,innerWidth-80));}
 function registrar(n,c){n=(n||"").trim();if(!n)return false;let p=cuad().find(x=>x.nombre.toLowerCase()===n.toLowerCase());if(!p){p={id:uid(),nombre:n,cargo:(c||"").trim()};R.cuadrilla.push(p);CFG.cuadrilla.push({...p});}if(!R.asistentes.includes(p.id)){R.asistentes.push(p.id);R.condicion[p.id]={ok:true};}save();return true;}
 let scanStream=null,scanRAF=null;
@@ -534,7 +586,8 @@ document.getElementById("modal").onclick=e=>{if(e.target.id==="modal"){if(scanSt
 setInterval(()=>{if(!R||R.cerrada)return;const sg=segundos(R);if(view==="rit"){const t=document.getElementById("timer");t.textContent=`⏱ ${mmss(sg)}`;t.classList.toggle("over",sg>MAX_MIN*60);}const hc=document.getElementById("homeClock");if(hc){hc.textContent=`⏱ ${mmss(sg)}`;hc.classList.toggle("over",sg>MAX_MIN*60);}},1000);
 
 async function arranque(){
-  if(Q.get("join")){vistaParticipante();return;}
+  if(Q.get("codigo")){ASIS=Object.assign(ASIS||{},{codigo:Q.get("codigo").toUpperCase()});LS.setItem("rit.asis",JSON.stringify(ASIS));view="asis";render();cargarAsis();return;}
+  if(ASIS&&ASIS.codigo&&!(sb&&(await sb.auth.getSession()).data.session)&&!LS.getItem(KEYU)){view="asis";render();cargarAsis();return;}
   if(sb){const {data}=await sb.auth.getSession();if(data.session){await sesionDesde(data.session.user);return;}view="login";render();return;}
   const u=JSON.parse(LS.getItem(KEYU)||"null");if(u){USER=u;entrar();}else{view="login";render();}
 }
