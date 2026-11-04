@@ -330,11 +330,21 @@ async function entrarRepo(){const k=(document.getElementById("rK").value||"").tr
   if(error||!data){const m=document.getElementById("rMsg");m.classList.remove("hid");m.textContent=error?"Error: "+error.message:"Clave incorrecta";return;}
   const map=new Map(DB.map(r=>[r.id,r]));data.forEach(x=>{const r=x.data;r.user_id=x.user_id;r.email=x.email;const loc=map.get(r.id);if(!loc||(x.updated_at>(loc.updated_at||"")))map.set(r.id,r);});
   DB=[...map.values()].sort((a,b)=>(a.inicioTs||"").localeCompare(b.inicioTs||""));USER.role="admin";closeModal();setView("repo");}
-async function login(){const e=lE.value.trim(),p=lP.value;if(!e||!p){toast("Correo y contraseña");return;}const {data,error}=await sb.auth.signInWithPassword({email:e,password:p});if(error){lMsg.classList.remove("hid");lMsg.textContent="No se pudo entrar: "+error.message;return;}await sesionDesde(data.user);}
+async function login(){const e=lE.value.trim().toLowerCase(),p=lP.value;if(!e||!p){toast("Correo y contraseña");return;}
+  let {data,error}=await sb.auth.signInWithPassword({email:e,password:p});
+  if(error){await sb.rpc("rit_confirmar_cuenta",{p_email:e});({data,error}=await sb.auth.signInWithPassword({email:e,password:p}));}
+  if(error){lMsg.classList.remove("hid");lMsg.textContent=/invalid/i.test(error.message)?"Correo o contraseña incorrectos.":"No se pudo entrar: "+error.message;return;}
+  await sesionDesde(data.user);}
 function registro(){openModal(`<h3>Crear cuenta</h3><label>Nombre y apellido</label><input id="rN" placeholder="Como aparecerá en las RIT"><label>Cargo</label><input id="rC" placeholder="Ej: Maestro techumbres"><label>Correo</label><input id="rE" type="email"><label>Contraseña (mín. 6)</label><input id="rP" type="password">
    <div class="info">Después de entrar podrás <b>crear una cuadrilla</b> o <b>unirte a una</b> con el código de quien la creó. Cualquier integrante puede registrar la RIT del día.</div>
    <button class="btn p w" onclick="crearCuenta()">Crear cuenta</button><button class="btn s sm w" onclick="closeModal()">Cancelar</button>`);}
-async function crearCuenta(){const n=rN.value.trim(),c=rC.value.trim(),e=rE.value.trim(),p=rP.value;if(!n||!e||p.length<6){toast("Completa los datos");return;}const {data,error}=await sb.auth.signUp({email:e,password:p,options:{data:{nombre:n,cargo:c}}});if(error){toast(error.message);return;}closeModal();if(data.session){await sesionDesde(data.user);}else{toast("Revisa tu correo para confirmar la cuenta");}}
+async function crearCuenta(){const n=rN.value.trim(),c=rC.value.trim(),e=rE.value.trim().toLowerCase(),p=rP.value;if(!n||!e||p.length<6){toast("Completa los datos (contraseña mín. 6)");return;}
+  const {data:r,error}=await sb.rpc("rit_crear_cuenta",{p_email:e,p_password:p,p_nombre:n,p_cargo:c});
+  if(error){toast("No se pudo crear: "+error.message);return;}
+  if(!r||!r.ok){toast(r&&r.msg==="existe"?"Ese correo ya tiene cuenta: usa Entrar":"No se pudo crear la cuenta");return;}
+  const {data,error:e2}=await sb.auth.signInWithPassword({email:e,password:p});
+  if(e2){toast("Cuenta creada, pero no se pudo entrar: "+e2.message);return;}
+  closeModal();await sesionDesde(data.user);}
 async function sesionDesde(u){const md=u.user_metadata||{};USER={id:u.id,email:u.email,nombre:md.nombre||u.email.split("@")[0],role:"trabajador"};if(md.cargo&&!CFG.cargo)CFG.cargo=md.cargo;await pullAll();entrar();}
 async function salir(){if(sb)await sb.auth.signOut();USER=null;LS.removeItem(KEYU);R=null;view="login";render();}
 function entrar(){view="home";render();if(sb)iniciarPolling();}
